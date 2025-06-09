@@ -50,7 +50,7 @@ export default function OrderConfirmationPage() {
         </nav>
       </header>
 
-      <div className="flex-1 container mx-auto px-4 py-8">
+      <div className="flex-1 container mx-auto px-4 py-8 flex items-center justify-center">
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Success Message */}
           <div className="text-center space-y-4">

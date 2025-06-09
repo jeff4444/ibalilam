@@ -154,7 +154,7 @@ export default function PartsPage() {
         </nav>
       </header>
 
-      <div className="flex-1">
+      <div className="flex-1 flex items-center justify-center">
         <div className="container mx-auto px-4 py-6">
           {/* Page Header */}
           <div className="flex flex-col space-y-4 mb-6">

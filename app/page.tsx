@@ -49,7 +49,7 @@ export default function HomePage() {
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-gradient-to-r from-blue-50 to-blue-100">
+        <section className="flex flex-row w-full py-12 md:py-24 lg:py-32 bg-gradient-to-r from-blue-50 to-blue-100 items-center justify-center">
           <div className="container px-4 md:px-6">
             <div className="grid gap-6 lg:grid-cols-[1fr_400px] lg:gap-12 xl:grid-cols-[1fr_600px]">
               <div className="flex flex-col justify-center space-y-4">
@@ -124,7 +124,7 @@ export default function HomePage() {
         </section>
 
         {/* How It Works Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32">
+        <section className="flex flex-row w-full py-12 md:py-24 lg:py-32 items-center justify-center">
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
@@ -184,7 +184,7 @@ export default function HomePage() {
         </section>
 
         {/* Popular Categories */}
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-gray-50">
+        <section className="flex flex-row w-full py-12 md:py-24 lg:py-32 bg-gray-50 items-center justify-center">
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center mb-8">
               <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">Popular Categories</h2>
@@ -244,7 +244,7 @@ export default function HomePage() {
         </section>
 
         {/* Benefits Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32">
+        <section className="flex flex-row w-full py-12 md:py-24 lg:py-32 items-center justify-center">
           <div className="container px-4 md:px-6">
             <div className="grid gap-6 lg:grid-cols-[1fr_500px] lg:gap-12 xl:grid-cols-[1fr_550px]">
               <div className="flex flex-col justify-center space-y-4">
@@ -307,7 +307,7 @@ export default function HomePage() {
         </section>
 
         {/* CTA Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-blue-600 text-white">
+        <section className="flex flex-row w-full py-12 md:py-24 lg:py-32 bg-blue-600 text-white items-center justify-center">
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">

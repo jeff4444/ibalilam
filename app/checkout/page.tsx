@@ -100,7 +100,7 @@ export default function CheckoutPage() {
         </nav>
       </header>
 
-      <div className="flex-1 container mx-auto px-4 py-6">
+      <div className="flex-1 container mx-auto px-4 py-6 flex items-center justify-center">
         <div className="flex items-center space-x-2 mb-6">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/cart">

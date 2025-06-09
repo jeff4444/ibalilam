@@ -94,7 +94,7 @@ export default function ProfilePage() {
         </nav>
       </header>
 
-      <div className="flex-1 space-y-6 p-4 md:p-8">
+      <div className="flex-1 space-y-6 p-4 md:p-8 flex items-center justify-center">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Profile</h1>
           <div className="flex items-center space-x-2">
