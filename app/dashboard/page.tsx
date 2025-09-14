@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -19,6 +19,7 @@ import {
   TrendingUp,
   DollarSign,
   RefreshCw,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,12 +29,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CartButton } from "@/components/cart-button"
 import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
+import { createClient } from "@/utils/supabase/client"
 
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [priceRange, setPriceRange] = useState({ min: "", max: "" })
+  const [selectedPart, setSelectedPart] = useState<any>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [partToDelete, setPartToDelete] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    category: "",
+    price: "",
+    stock_quantity: "",
+    status: "active",
+  })
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { 
@@ -46,6 +69,7 @@ export default function DashboardPage() {
     error, 
     refreshData 
   } = useShop()
+  const supabase = createClient()
 
   // Redirect if not logged in
   useEffect(() => {
@@ -53,6 +77,132 @@ export default function DashboardPage() {
       router.push("/login")
     }
   }, [user, authLoading, router])
+
+  // Filter parts based on search and filter criteria
+  const filteredOriginalParts = useMemo(() => {
+    return originalParts.filter(part => {
+      const matchesSearch = searchTerm === "" || 
+        part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        part.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      const matchesCategory = categoryFilter === "" || categoryFilter === "all" || part.category === categoryFilter
+      
+      const matchesStatus = statusFilter === "" || statusFilter === "all" || part.status === statusFilter
+      
+      const matchesPrice = (priceRange.min === "" || part.price >= parseFloat(priceRange.min)) &&
+                         (priceRange.max === "" || part.price <= parseFloat(priceRange.max))
+      
+      return matchesSearch && matchesCategory && matchesStatus && matchesPrice
+    })
+  }, [originalParts, searchTerm, categoryFilter, statusFilter, priceRange])
+
+  const filteredRefurbishedParts = useMemo(() => {
+    return refurbishedParts.filter(part => {
+      const matchesSearch = searchTerm === "" || 
+        part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        part.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      const matchesCategory = categoryFilter === "" || categoryFilter === "all" || part.category === categoryFilter
+      
+      const matchesStatus = statusFilter === "" || statusFilter === "all" || part.status === statusFilter
+      
+      const matchesPrice = (priceRange.min === "" || part.price >= parseFloat(priceRange.min)) &&
+                         (priceRange.max === "" || part.price <= parseFloat(priceRange.max))
+      
+      return matchesSearch && matchesCategory && matchesStatus && matchesPrice
+    })
+  }, [refurbishedParts, searchTerm, categoryFilter, statusFilter, priceRange])
+
+  // Get unique categories for filter dropdown
+  const categories = useMemo(() => {
+    const allParts = [...originalParts, ...refurbishedParts]
+    return [...new Set(allParts.map(part => part.category))].sort()
+  }, [originalParts, refurbishedParts])
+
+  // CRUD Functions
+  const handleViewPart = (part: any) => {
+    setSelectedPart(part)
+    setIsViewModalOpen(true)
+  }
+
+  const handleEditPart = (part: any) => {
+    setSelectedPart(part)
+    setEditForm({
+      name: part.name,
+      description: part.description || "",
+      category: part.category,
+      price: part.price.toString(),
+      stock_quantity: part.stock_quantity.toString(),
+      status: part.status,
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const handleDeletePart = (part: any) => {
+    setPartToDelete(part)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!partToDelete) return
+    
+    setIsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('parts')
+        .delete()
+        .eq('id', partToDelete.id)
+
+      if (error) throw error
+
+      // Refresh data to update the UI
+      refreshData()
+      setIsDeleteDialogOpen(false)
+      setPartToDelete(null)
+    } catch (error) {
+      console.error('Error deleting part:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!selectedPart) return
+
+    setIsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('parts')
+        .update({
+          name: editForm.name,
+          description: editForm.description,
+          category: editForm.category,
+          price: parseFloat(editForm.price),
+          stock_quantity: parseInt(editForm.stock_quantity),
+          status: editForm.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedPart.id)
+
+      if (error) throw error
+
+      // Refresh data to update the UI
+      refreshData()
+      setIsEditModalOpen(false)
+      setSelectedPart(null)
+    } catch (error) {
+      console.error('Error updating part:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const clearFilters = () => {
+    setSearchTerm("")
+    setCategoryFilter("all")
+    setStatusFilter("all")
+    setPriceRange({ min: "", max: "" })
+  }
 
   // Show loading state while checking authentication
   if (authLoading || loading) {
@@ -146,9 +296,11 @@ export default function DashboardPage() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{shopStats?.active_listings || 0}</div>
+              <div className="text-2xl font-bold">
+                {(originalParts.filter(p => p.status === 'active').length + refurbishedParts.filter(p => p.status === 'active').length)}
+              </div>
               <p className="text-xs text-muted-foreground">
-                {originalParts.length + refurbishedParts.length} total parts
+                {originalParts.length + refurbishedParts.length} total parts listed
               </p>
             </CardContent>
           </Card>
@@ -158,9 +310,11 @@ export default function DashboardPage() {
               <Eye className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{shopStats?.total_views?.toLocaleString() || '0'}</div>
+              <div className="text-2xl font-bold">
+                {(originalParts.reduce((sum, part) => sum + part.views, 0) + refurbishedParts.reduce((sum, part) => sum + part.views, 0)).toLocaleString()}
+              </div>
               <p className="text-xs text-muted-foreground">
-                {shopStats?.customer_satisfaction ? `${shopStats.customer_satisfaction}% satisfaction` : 'No views yet'}
+                {shopStats?.customer_satisfaction ? `${shopStats.customer_satisfaction}% satisfaction` : 'Across all parts'}
               </p>
             </CardContent>
           </Card>
@@ -170,9 +324,14 @@ export default function DashboardPage() {
               <Wrench className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{shopStats?.refurbished_sold || 0}</div>
+              <div className="text-2xl font-bold">
+                {refurbishedParts.filter(p => p.status === 'sold').length}
+              </div>
               <p className="text-xs text-muted-foreground">
-                {refurbishedParts.filter(p => p.status === 'sold').length} sold this period
+                {refurbishedParts.length > 0 
+                  ? `${refurbishedParts.length} total refurbished parts`
+                  : 'No refurbished parts yet'
+                }
               </p>
             </CardContent>
           </Card>
@@ -192,20 +351,78 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle>Your Original Parts Listings</CardTitle>
                 <CardDescription>Manage your electronic parts inventory and listings</CardDescription>
-                <div className="flex items-center space-x-2">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search parts..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-8"
-                    />
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search parts..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                    <Button variant="outline" size="sm" onClick={clearFilters}>
+                      <X className="mr-2 h-4 w-4" />
+                      Clear
+                    </Button>
                   </div>
-                  <Button variant="outline" size="sm">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filter
-                  </Button>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="category-filter">Category</Label>
+                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All categories" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All categories</SelectItem>
+                          {categories.map(category => (
+                            <SelectItem key={category} value={category}>{category}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="status-filter">Status</Label>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                          <SelectItem value="sold">Sold</SelectItem>
+                          <SelectItem value="draft">Draft</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="min-price">Min Price</Label>
+                      <Input
+                        id="min-price"
+                        type="number"
+                        placeholder="0.00"
+                        value={priceRange.min}
+                        onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="max-price">Max Price</Label>
+                      <Input
+                        id="max-price"
+                        type="number"
+                        placeholder="1000.00"
+                        value={priceRange.max}
+                        onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                      />
+                    </div>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -222,14 +439,17 @@ export default function DashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {originalParts.length === 0 ? (
+                    {filteredOriginalParts.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          No original parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first part</Link>
+                          {originalParts.length === 0 
+                            ? <>No original parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first part</Link></>
+                            : "No parts match your current filters. Try adjusting your search criteria."
+                          }
                         </TableCell>
                       </TableRow>
                     ) : (
-                      originalParts.map((part) => (
+                      filteredOriginalParts.map((part) => (
                         <TableRow key={part.id}>
                           <TableCell className="font-medium">
                             <div className="flex items-center space-x-3">
@@ -267,15 +487,18 @@ export default function DashboardPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleViewPart(part)}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   View
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditPart(part)}>
                                   <Edit className="mr-2 h-4 w-4" />
                                   Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600">
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  onClick={() => handleDeletePart(part)}
+                                >
                                   <Trash2 className="mr-2 h-4 w-4" />
                                   Delete
                                 </DropdownMenuItem>
@@ -297,6 +520,79 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle>Refurbished Parts</CardTitle>
                 <CardDescription>Track your refurbishment projects and their profitability</CardDescription>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search refurbished parts..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                    <Button variant="outline" size="sm" onClick={clearFilters}>
+                      <X className="mr-2 h-4 w-4" />
+                      Clear
+                    </Button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="refurb-category-filter">Category</Label>
+                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All categories" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All categories</SelectItem>
+                          {categories.map(category => (
+                            <SelectItem key={category} value={category}>{category}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="refurb-status-filter">Status</Label>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                          <SelectItem value="sold">Sold</SelectItem>
+                          <SelectItem value="draft">Draft</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="refurb-min-price">Min Price</Label>
+                      <Input
+                        id="refurb-min-price"
+                        type="number"
+                        placeholder="0.00"
+                        value={priceRange.min}
+                        onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="refurb-max-price">Max Price</Label>
+                      <Input
+                        id="refurb-max-price"
+                        type="number"
+                        placeholder="1000.00"
+                        value={priceRange.max}
+                        onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -314,14 +610,17 @@ export default function DashboardPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {refurbishedParts.length === 0 ? (
+                    {filteredRefurbishedParts.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                          No refurbished parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first refurbished part</Link>
+                          {refurbishedParts.length === 0 
+                            ? <>No refurbished parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first refurbished part</Link></>
+                            : "No parts match your current filters. Try adjusting your search criteria."
+                          }
                         </TableCell>
                       </TableRow>
                     ) : (
-                      refurbishedParts.map((part) => (
+                      filteredRefurbishedParts.map((part) => (
                         <TableRow key={part.id}>
                           <TableCell className="font-medium">
                             <div className="flex items-center space-x-3">
@@ -366,13 +665,20 @@ export default function DashboardPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleViewPart(part)}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
                                 </DropdownMenuItem>
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditPart(part)}>
                                   <Edit className="mr-2 h-4 w-4" />
                                   Edit Listing
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  onClick={() => handleDeletePart(part)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -510,6 +816,207 @@ export default function DashboardPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* View Part Modal */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Part Details</DialogTitle>
+            <DialogDescription>View detailed information about this part</DialogDescription>
+          </DialogHeader>
+          {selectedPart && (
+            <div className="space-y-4">
+              <div className="flex items-start space-x-4">
+                <Image
+                  src={selectedPart.image_url || "/placeholder.svg"}
+                  alt={selectedPart.name}
+                  width={120}
+                  height={120}
+                  className="rounded-md"
+                />
+                <div className="flex-1 space-y-2">
+                  <h3 className="text-xl font-semibold">{selectedPart.name}</h3>
+                  <p className="text-muted-foreground">{selectedPart.description || "No description"}</p>
+                  <div className="flex items-center space-x-4">
+                    <Badge variant="outline">{selectedPart.category}</Badge>
+                    <Badge variant={
+                      selectedPart.status === "active" ? "default" : 
+                      selectedPart.status === "out_of_stock" ? "destructive" : 
+                      "secondary"
+                    }>
+                      {selectedPart.status === "active" ? "Active" : 
+                       selectedPart.status === "out_of_stock" ? "Out of Stock" :
+                       selectedPart.status === "draft" ? "Draft" :
+                       selectedPart.status === "inactive" ? "Inactive" : "Sold"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Price</Label>
+                  <p className="text-lg font-semibold">${selectedPart.price.toFixed(2)}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Stock Quantity</Label>
+                  <p className="text-lg">{selectedPart.stock_quantity}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Views</Label>
+                  <p className="text-lg">{selectedPart.views}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Part Type</Label>
+                  <p className="text-lg capitalize">{selectedPart.part_type}</p>
+                </div>
+              </div>
+
+              {selectedPart.part_type === 'refurbished' && (
+                <div className="space-y-2">
+                  <h4 className="font-medium">Refurbishment Details</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium">Original Condition</Label>
+                      <p className="text-sm">{selectedPart.original_condition || "N/A"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Refurbished Condition</Label>
+                      <p className="text-sm">{selectedPart.refurbished_condition || "N/A"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Cost</Label>
+                      <p className="text-sm">${selectedPart.cost?.toFixed(2) || "0.00"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Profit</Label>
+                      <p className="text-sm text-green-600">+${selectedPart.profit?.toFixed(2) || "0.00"}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Time Spent</Label>
+                      <p className="text-sm">{selectedPart.time_spent_hours ? `${selectedPart.time_spent_hours}h` : "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Part Modal */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Part</DialogTitle>
+            <DialogDescription>Update the details of this part</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                disabled={isLoading}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editForm.description}
+                onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+                disabled={isLoading}
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-category">Category</Label>
+                <Input
+                  id="edit-category"
+                  value={editForm.category}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, category: e.target.value }))}
+                  disabled={isLoading}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="edit-status">Status</Label>
+                <Select value={editForm.status} onValueChange={(value) => setEditForm(prev => ({ ...prev, status: value }))}>
+                  <SelectTrigger disabled={isLoading}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                    <SelectItem value="sold">Sold</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-price">Price</Label>
+                <Input
+                  id="edit-price"
+                  type="number"
+                  step="0.01"
+                  value={editForm.price}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, price: e.target.value }))}
+                  disabled={isLoading}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="edit-stock">Stock Quantity</Label>
+                <Input
+                  id="edit-stock"
+                  type="number"
+                  value={editForm.stock_quantity}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, stock_quantity: e.target.value }))}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={isLoading}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={isLoading}>
+                {isLoading ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Part</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{partToDelete?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={isLoading}>
+              {isLoading ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
