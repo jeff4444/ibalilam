@@ -106,49 +106,9 @@ export function usePart(partId: string) {
         shop_active_listings: (partData.shops as any)?.active_listings,
       }
 
-      // Fetch reviews for this part (optional - table might not exist yet)
-      let reviews: any[] = []
-      try {
-        const { data: reviewsData, error: reviewsError } = await supabase
-          .from('reviews')
-          .select(`
-            id,
-            user_id,
-            rating,
-            comment,
-            created_at,
-            is_verified_buyer,
-            status
-          `)
-          .eq('part_id', partId)
-          .eq('status', 'approved')
-          .order('created_at', { ascending: false })
-          .limit(10)
-
-        if (reviewsError) {
-          // If reviews table doesn't exist, just log and continue
-          if (reviewsError.code === 'PGRST106') {
-            console.log('Reviews table does not exist yet')
-          } else {
-            console.error('Error fetching reviews:', reviewsError)
-          }
-        } else {
-          // Transform reviews data
-          reviews = reviewsData?.map(review => ({
-            id: review.id,
-            user_id: review.user_id,
-            user_name: 'Anonymous', // For now, we'll use Anonymous. In the future, you could fetch user names separately
-            rating: review.rating,
-            comment: review.comment,
-            created_at: review.created_at,
-            is_verified_buyer: review.is_verified_buyer,
-            status: review.status,
-          })) || []
-        }
-      } catch (err) {
-        console.log('Reviews not available:', err)
-        reviews = []
-      }
+      // Note: Reviews are at the shop level, not part level
+      // Shop reviews can be viewed on the seller's contact/profile page
+      const reviews: any[] = []
 
       // Fetch related parts (same category, different part)
       let relatedParts: any[] = []

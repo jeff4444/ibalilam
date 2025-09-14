@@ -500,10 +500,9 @@ export default function PartDetailPage() {
 
           {/* Product Details Tabs */}
           <Tabs defaultValue="details" className="mb-8">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="refurbishment">Refurbishment</TabsTrigger>
-              <TabsTrigger value="reviews">Reviews ({part.reviews?.length || 0})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="details" className="mt-6">
@@ -586,49 +585,6 @@ export default function PartDetailPage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="reviews" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Customer Reviews</CardTitle>
-                  <CardDescription>See what other customers are saying about this product</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {part.reviews && part.reviews.length > 0 ? (
-                    part.reviews.map((review) => (
-                      <div key={review.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-medium">{review.user_name}</span>
-                            {review.is_verified_buyer && (
-                              <Badge variant="secondary" className="text-xs">
-                                Verified Purchase
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-sm text-muted-foreground">
-                            {new Date(review.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${
-                                i < review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <p className="text-muted-foreground">{review.comment}</p>
-                        <Separator />
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-muted-foreground text-center py-8">No reviews yet. Be the first to review this part!</p>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
           </Tabs>
 
           {/* Related Products */}

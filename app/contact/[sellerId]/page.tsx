@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, use } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,37 +10,227 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Star, MessageCircle, User, Mail, MapPin, Clock, Shield } from "lucide-react"
+import { Star, MessageCircle, User, Mail, MapPin, Clock, Shield, Loader2, AlertCircle, Check } from "lucide-react"
 import Link from "next/link"
+import { useSeller } from "@/hooks/use-seller"
+import { Skeleton } from "@/components/ui/skeleton"
 
-export default function ContactSellerPage({ params }: { params: { sellerId: string } }) {
+export default function ContactSellerPage({ params }: { params: Promise<{ sellerId: string }> }) {
   const [message, setMessage] = useState("")
+  const [subject, setSubject] = useState("")
+  const [regardingPart, setRegardingPart] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
+  const [submitSuccess, setSubmitSuccess] = useState(false)
+  
+  const resolvedParams = use(params)
+  const { seller, loading, error } = useSeller(resolvedParams.sellerId)
 
-  // Mock seller data - in real app, fetch based on sellerId
-  const seller = {
-    id: params.sellerId,
-    name: "Mike Johnson",
-    avatar: "/placeholder.svg?height=80&width=80",
-    rating: 4.8,
-    totalReviews: 127,
-    joinDate: "March 2022",
-    location: "Austin, TX",
-    responseTime: "< 2 hours",
-    verified: true,
-    bio: "Electronics technician with 15+ years experience. Specializing in microcontrollers, sensors, and repair components.",
-    stats: {
-      totalSales: 340,
-      completionRate: 98,
-      repeatCustomers: 85,
-    },
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setSubmitError("")
+    setSubmitSuccess(false)
+
+    try {
+      const response = await fetch('/api/contact-seller', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sellerId: resolvedParams.sellerId,
+          subject,
+          regardingPart,
+          message,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send email')
+      }
+
+      setSubmitSuccess(true)
+      setMessage("")
+      setSubject("")
+      setRegardingPart("")
+      
+      // Reset success message after 3 seconds
+      setTimeout(() => setSubmitSuccess(false), 3000)
+    } catch (err) {
+      console.error('Error sending email:', err)
+      setSubmitError(err instanceof Error ? err.message : 'Failed to send email')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Handle message submission
-    console.log("Message sent:", message)
-    alert("Message sent successfully!")
-    setMessage("")
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <Link href="/" className="text-2xl font-bold text-blue-600">
+                TechParts
+              </Link>
+              <nav className="flex items-center space-x-6">
+                <Link href="/parts" className="text-gray-700 hover:text-blue-600">
+                  Browse Parts
+                </Link>
+                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
+                  Dashboard
+                </Link>
+                <Link href="/profile" className="text-gray-700 hover:text-blue-600">
+                  Profile
+                </Link>
+              </nav>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Contact Seller</h1>
+            <p className="text-gray-600">Get in touch with the part seller</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Loading skeleton for seller profile */}
+            <div className="lg:col-span-1">
+              <Card>
+                <CardHeader className="text-center">
+                  <div className="flex justify-center mb-4">
+                    <Skeleton className="h-20 w-20 rounded-full" />
+                  </div>
+                  <Skeleton className="h-6 w-32 mx-auto mb-2" />
+                  <Skeleton className="h-4 w-24 mx-auto" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-4 w-1/3" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Loading skeleton for contact form */}
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-4 w-64" />
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                  <Skeleton className="h-32 w-full" />
+                  <Skeleton className="h-10 w-32" />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <Link href="/" className="text-2xl font-bold text-blue-600">
+                TechParts
+              </Link>
+              <nav className="flex items-center space-x-6">
+                <Link href="/parts" className="text-gray-700 hover:text-blue-600">
+                  Browse Parts
+                </Link>
+                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
+                  Dashboard
+                </Link>
+                <Link href="/profile" className="text-gray-700 hover:text-blue-600">
+                  Profile
+                </Link>
+              </nav>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Card className="w-full max-w-md">
+              <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Seller Not Found</h2>
+                <p className="text-gray-600 mb-4">{error}</p>
+                <Button asChild>
+                  <Link href="/parts">Back to Parts</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // If no seller data, show error
+  if (!seller) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <Link href="/" className="text-2xl font-bold text-blue-600">
+                TechParts
+              </Link>
+              <nav className="flex items-center space-x-6">
+                <Link href="/parts" className="text-gray-700 hover:text-blue-600">
+                  Browse Parts
+                </Link>
+                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
+                  Dashboard
+                </Link>
+                <Link href="/profile" className="text-gray-700 hover:text-blue-600">
+                  Profile
+                </Link>
+              </nav>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Card className="w-full max-w-md">
+              <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Seller Not Found</h2>
+                <p className="text-gray-600 mb-4">The seller you're looking for doesn't exist or is no longer active.</p>
+                <Button asChild>
+                  <Link href="/parts">Back to Parts</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -82,10 +272,14 @@ export default function ContactSellerPage({ params }: { params: { sellerId: stri
                   <Avatar className="h-20 w-20">
                     <AvatarImage src={seller.avatar || "/placeholder.svg"} alt={seller.name} />
                     <AvatarFallback>
-                      {seller.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
+                      {seller.firstName && seller.lastName 
+                        ? `${seller.firstName[0]}${seller.lastName[0]}`.toUpperCase()
+                        : seller.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()
+                      }
                     </AvatarFallback>
                   </Avatar>
                 </div>
@@ -138,12 +332,20 @@ export default function ContactSellerPage({ params }: { params: { sellerId: stri
                       <span className="font-medium">{seller.stats.totalSales}</span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-gray-600">Active Listings:</span>
+                      <span className="font-medium">{seller.stats.activeListings}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-gray-600">Completion Rate:</span>
                       <span className="font-medium">{seller.stats.completionRate}%</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Repeat Customers:</span>
                       <span className="font-medium">{seller.stats.repeatCustomers}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Conversion Rate:</span>
+                      <span className="font-medium">{seller.stats.conversionRate}%</span>
                     </div>
                   </div>
                 </div>
@@ -156,21 +358,50 @@ export default function ContactSellerPage({ params }: { params: { sellerId: stri
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <MessageCircle className="h-5 w-5" />
-                  Send Message
+                  <Mail className="h-5 w-5" />
+                  Send Email Message
                 </CardTitle>
-                <CardDescription>Ask questions about the part or discuss details</CardDescription>
+                <CardDescription>Ask questions about the part or discuss details via email</CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  {submitError && (
+                    <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-4 w-4 text-red-500 mr-2" />
+                        <span className="text-sm text-red-700">{submitError}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {submitSuccess && (
+                    <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                      <div className="flex items-center">
+                        <Check className="h-4 w-4 text-green-500 mr-2" />
+                        <span className="text-sm text-green-700">Email sent successfully! The seller will receive your message.</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="subject">Subject *</Label>
-                      <Input id="subject" placeholder="e.g., Question about Arduino Uno" required />
+                      <Input 
+                        id="subject" 
+                        placeholder="e.g., Question about Arduino Uno" 
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
+                        required 
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="regarding">Regarding Part (Optional)</Label>
-                      <Input id="regarding" placeholder="Part name or ID" />
+                      <Input 
+                        id="regarding" 
+                        placeholder="Part name or ID" 
+                        value={regardingPart}
+                        onChange={(e) => setRegardingPart(e.target.value)}
+                      />
                     </div>
                   </div>
 
@@ -191,23 +422,33 @@ export default function ContactSellerPage({ params }: { params: { sellerId: stri
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contact-method">Preferred Contact Method</Label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input type="radio" name="contact" value="platform" defaultChecked />
-                        <span className="text-sm">Platform Messages</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="radio" name="contact" value="email" />
-                        <span className="text-sm">Email</span>
-                      </label>
+                    <Label htmlFor="contact-method">Contact Method</Label>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Mail className="h-4 w-4" />
+                      <span>Email communication</span>
                     </div>
+                    <p className="text-xs text-gray-500">
+                      Your message will be sent via email to the seller.
+                    </p>
                   </div>
 
                   <div className="flex gap-4">
-                    <Button type="submit" className="flex-1">
-                      <Mail className="h-4 w-4 mr-2" />
-                      Send Message
+                    <Button 
+                      type="submit" 
+                      className="flex-1" 
+                      disabled={isSubmitting || !subject.trim() || !message.trim()}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Send Email
+                        </>
+                      )}
                     </Button>
                     <Button type="button" variant="outline" asChild>
                       <Link href="/parts">Back to Parts</Link>
@@ -224,14 +465,12 @@ export default function ContactSellerPage({ params }: { params: { sellerId: stri
                 <CardDescription>Other ways to connect with this seller</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button variant="outline" className="justify-start">
-                    <User className="h-4 w-4 mr-2" />
-                    View All Parts by {seller.name.split(" ")[0]}
-                  </Button>
-                  <Button variant="outline" className="justify-start">
-                    <Star className="h-4 w-4 mr-2" />
-                    Read Reviews
+                <div className="grid grid-cols-1 gap-4">
+                  <Button variant="outline" className="justify-start" asChild>
+                    <Link href={`/parts?shop=${seller.id}`}>
+                      <User className="h-4 w-4 mr-2" />
+                      View All Parts by {seller.firstName || seller.name.split(" ")[0]}
+                    </Link>
                   </Button>
                 </div>
               </CardContent>
