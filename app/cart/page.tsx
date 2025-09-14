@@ -21,11 +21,11 @@ export default function CartPage() {
   const tax = totalPrice * 0.08
   const finalTotal = totalPrice + shipping + tax
 
-  const handleQuantityChange = (id: number, newQuantity: number) => {
+  const handleQuantityChange = (id: string, newQuantity: number) => {
     updateQuantity(id, newQuantity)
   }
 
-  const handleRemoveItem = (id: number) => {
+  const handleRemoveItem = (id: string) => {
     removeItem(id)
   }
 
@@ -49,6 +49,9 @@ export default function CartPage() {
           <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
               Browse Parts
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+              Favorites
             </Link>
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
               Dashboard

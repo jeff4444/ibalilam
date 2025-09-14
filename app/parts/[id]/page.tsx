@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -18,6 +18,7 @@ import {
   Plus,
   Minus,
   AlertCircle,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,18 +27,64 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useToast } from "@/hooks/use-toast"
 import { useCartStore } from "@/lib/cart-store"
 import { CartButton } from "@/components/cart-button"
 import { usePart } from "@/hooks/use-part"
+import { useAuth } from "@/hooks/use-auth"
+import { createClient } from "@/utils/supabase/client"
 
 export default function PartDetailPage() {
   const params = useParams()
   const partId = params.id as string
   const [quantity, setQuantity] = useState(1)
   const [selectedImage, setSelectedImage] = useState(0)
+  const [isLiked, setIsLiked] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [shareSuccess, setShareSuccess] = useState(false)
 
   const { part, loading, error } = usePart(partId)
   const addToCart = useCartStore((state) => state.addItem)
+  const { toast } = useToast()
+  const { user } = useAuth()
+  const supabase = createClient()
+
+  // Load liked status from database on component mount
+  useEffect(() => {
+    const checkIfLiked = async () => {
+      if (!partId || !user?.id) {
+        // If no user, fallback to localStorage
+        const likedItems = JSON.parse(localStorage.getItem('likedItems') || '[]')
+        setIsLiked(likedItems.includes(partId))
+        return
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('user_favorites')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('part_id', partId)
+          .maybeSingle()
+
+        if (error) {
+          console.error('Error checking favorite status:', error)
+          // Fallback to localStorage on error
+          const likedItems = JSON.parse(localStorage.getItem('likedItems') || '[]')
+          setIsLiked(likedItems.includes(partId))
+        } else {
+          setIsLiked(!!data)
+        }
+      } catch (err) {
+        console.error('Error checking favorite status:', err)
+        // Fallback to localStorage on error
+        const likedItems = JSON.parse(localStorage.getItem('likedItems') || '[]')
+        setIsLiked(likedItems.includes(partId))
+      }
+    }
+
+    checkIfLiked()
+  }, [partId, user?.id, supabase])
 
   const handleAddToCart = () => {
     if (!part) return
@@ -52,7 +99,132 @@ export default function PartDetailPage() {
       stock: part.stock_quantity,
       quantity: quantity,
     })
-    // You could add a toast notification here
+    
+    toast({
+      title: "Added to cart",
+      description: `${part.name} has been added to your cart.`,
+    })
+  }
+
+  const handleLike = async () => {
+    if (!partId) return
+
+    if (!user?.id) {
+      // If no user logged in, use localStorage as fallback
+      const likedItems = JSON.parse(localStorage.getItem('likedItems') || '[]')
+      
+      if (isLiked) {
+        const updatedLikedItems = likedItems.filter((id: string) => id !== partId)
+        localStorage.setItem('likedItems', JSON.stringify(updatedLikedItems))
+        setIsLiked(false)
+        toast({
+          title: "Removed from favorites",
+          description: `${part?.name} has been removed from your favorites.`,
+        })
+      } else {
+        const updatedLikedItems = [...likedItems, partId]
+        localStorage.setItem('likedItems', JSON.stringify(updatedLikedItems))
+        setIsLiked(true)
+        toast({
+          title: "Added to favorites",
+          description: `${part?.name} has been added to your favorites.`,
+        })
+      }
+      return
+    }
+
+    try {
+      if (isLiked) {
+        // Remove from database
+        const { error } = await supabase
+          .from('user_favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('part_id', partId)
+
+        if (error) throw error
+
+        setIsLiked(false)
+        toast({
+          title: "Removed from favorites",
+          description: `${part?.name} has been removed from your favorites.`,
+        })
+      } else {
+        // Add to database
+        const { error } = await supabase
+          .from('user_favorites')
+          .insert({
+            user_id: user.id,
+            part_id: partId,
+          })
+
+        if (error) throw error
+
+        setIsLiked(true)
+        toast({
+          title: "Added to favorites",
+          description: `${part?.name} has been added to your favorites.`,
+        })
+      }
+    } catch (error) {
+      console.error('Error updating favorite:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update favorites. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleShare = async () => {
+    if (!part) return
+
+    setIsSharing(true)
+    
+    try {
+      const url = window.location.href
+      
+      // Check if clipboard API is available
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url)
+      } else {
+        // Fallback method for older browsers or non-secure contexts
+        const textArea = document.createElement('textarea')
+        textArea.value = url
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        
+        try {
+          document.execCommand('copy')
+        } catch (fallbackError) {
+          console.error('Fallback copy failed:', fallbackError)
+          throw new Error('Copy not supported')
+        } finally {
+          document.body.removeChild(textArea)
+        }
+      }
+      
+      setShareSuccess(true)
+      toast({
+        title: "Link copied",
+        description: "The part link has been copied to your clipboard.",
+      })
+    } catch (error) {
+      console.error('Error copying to clipboard:', error)
+      toast({
+        title: "Copy failed",
+        description: "Unable to copy the link. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSharing(false)
+      // Reset success state after 2 seconds
+      setTimeout(() => setShareSuccess(false), 2000)
+    }
   }
 
   // Show loading state
@@ -67,6 +239,9 @@ export default function PartDetailPage() {
           <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
               Browse Parts
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+              Favorites
             </Link>
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
               Dashboard
@@ -99,6 +274,9 @@ export default function PartDetailPage() {
           <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
               Browse Parts
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+              Favorites
             </Link>
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
               Dashboard
@@ -278,11 +456,26 @@ export default function PartDetailPage() {
                     <ShoppingCart className="mr-2 h-4 w-4" />
                     {part.stock_quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
                   </Button>
-                  <Button variant="outline" size="lg">
-                    <Heart className="h-4 w-4" />
+                  <Button 
+                    variant="outline" 
+                    size="lg"
+                    onClick={handleLike}
+                    className={isLiked ? "text-red-500 border-red-500 hover:bg-red-50" : ""}
+                  >
+                    <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
                   </Button>
-                  <Button variant="outline" size="lg">
-                    <Share2 className="h-4 w-4" />
+                  <Button 
+                    variant="outline" 
+                    size="lg"
+                    onClick={handleShare}
+                    disabled={isSharing}
+                    className={shareSuccess ? "text-green-500 border-green-500 hover:bg-green-50" : ""}
+                  >
+                    {shareSuccess ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Share2 className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>

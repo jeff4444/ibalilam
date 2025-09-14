@@ -325,6 +325,9 @@ export default function ProfilePage() {
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
             Browse Parts
           </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+            Favorites
+          </Link>
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
             Dashboard
           </Link>

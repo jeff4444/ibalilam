@@ -30,6 +30,9 @@ export default function HomePage() {
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
             Browse Parts
           </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+            Favorites
+          </Link>
           {/* Show Dashboard and Profile when logged in */}
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
             Dashboard
