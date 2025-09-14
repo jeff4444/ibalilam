@@ -34,6 +34,18 @@ export default function ProfilePage() {
     name: "",
     description: "",
   })
+  const [shopPolicies, setShopPolicies] = useState({
+    return_policy: "",
+    shipping_policy: "",
+    payment_policy: "",
+    warranty_policy: "",
+    privacy_policy: "",
+    terms_of_service: "",
+  })
+  const [shopStats, setShopStats] = useState({
+    rating: 0,
+    review_count: 0,
+  })
   const [newSpecialization, setNewSpecialization] = useState("")
   const [shopData, setShopData] = useState<any>(null)
   const router = useRouter()
@@ -101,7 +113,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('shops')
-            .select('name, description')
+            .select('name, description, rating, review_count, return_policy, shipping_policy, payment_policy, warranty_policy, privacy_policy, terms_of_service')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -116,6 +128,18 @@ export default function ProfilePage() {
               name: data.name || "",
               description: data.description || "",
             })
+            setShopPolicies({
+              return_policy: data.return_policy || "",
+              shipping_policy: data.shipping_policy || "",
+              payment_policy: data.payment_policy || "",
+              warranty_policy: data.warranty_policy || "",
+              privacy_policy: data.privacy_policy || "",
+              terms_of_service: data.terms_of_service || "",
+            })
+            setShopStats({
+              rating: data.rating || 0,
+              review_count: data.review_count || 0,
+            })
           }
         } catch (err) {
           console.error('Unexpected error fetching shop data:', err)
@@ -127,8 +151,8 @@ export default function ProfilePage() {
   }, [user?.id, supabase])
 
   const stats = {
-    rating: 4.8,
-    reviews: 127,
+    rating: shopStats.rating,
+    reviews: shopStats.review_count,
     joinDate: user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : "Unknown",
   }
 
@@ -165,6 +189,12 @@ export default function ProfilePage() {
           user_id: user?.id,
           name: shopProfile.name,
           description: shopProfile.description,
+          return_policy: shopPolicies.return_policy,
+          shipping_policy: shopPolicies.shipping_policy,
+          payment_policy: shopPolicies.payment_policy,
+          warranty_policy: shopPolicies.warranty_policy,
+          privacy_policy: shopPolicies.privacy_policy,
+          terms_of_service: shopPolicies.terms_of_service,
         }, {
           onConflict: 'user_id'
         })
@@ -219,6 +249,18 @@ export default function ProfilePage() {
       setShopProfile({
         name: shopData?.name || "",
         description: shopData?.description || "",
+      })
+      setShopPolicies({
+        return_policy: shopData?.return_policy || "",
+        shipping_policy: shopData?.shipping_policy || "",
+        payment_policy: shopData?.payment_policy || "",
+        warranty_policy: shopData?.warranty_policy || "",
+        privacy_policy: shopData?.privacy_policy || "",
+        terms_of_service: shopData?.terms_of_service || "",
+      })
+      setShopStats({
+        rating: shopData?.rating || 0,
+        review_count: shopData?.review_count || 0,
       })
     }
     setNewSpecialization("")
@@ -376,8 +418,10 @@ export default function ProfilePage() {
                 )}
                 <div className="flex items-center justify-center space-x-1">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-medium">{stats.rating}</span>
-                  <span className="text-muted-foreground">({stats.reviews} reviews)</span>
+                  <span className="font-medium">{stats.rating > 0 ? stats.rating.toFixed(1) : "No rating"}</span>
+                  <span className="text-muted-foreground">
+                    ({stats.reviews} {stats.reviews === 1 ? 'review' : 'reviews'})
+                  </span>
                 </div>
                 <Badge variant="secondary">Verified Seller</Badge>
               </div>
@@ -555,25 +599,115 @@ export default function ProfilePage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Shop Policies</CardTitle>
+                    <CardDescription>Manage your shop policies and terms</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <h4 className="font-medium mb-2">Return Policy</h4>
-                      <p className="text-sm text-muted-foreground">
-                        30-day return policy for all items. Items must be in original condition.
-                      </p>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="returnPolicy">Return Policy</Label>
+                      {isEditing ? (
+                        <Textarea
+                          id="returnPolicy"
+                          value={shopPolicies.return_policy}
+                          onChange={(e) => setShopPolicies({ ...shopPolicies, return_policy: e.target.value })}
+                          rows={3}
+                          placeholder="Describe your return and refund policy..."
+                          disabled={isLoading}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {shopPolicies.return_policy || "No return policy specified"}
+                        </p>
+                      )}
                     </div>
-                    <div>
-                      <h4 className="font-medium mb-2">Shipping</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Free shipping on orders over $50. Standard shipping takes 3-5 business days.
-                      </p>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="shippingPolicy">Shipping Policy</Label>
+                      {isEditing ? (
+                        <Textarea
+                          id="shippingPolicy"
+                          value={shopPolicies.shipping_policy}
+                          onChange={(e) => setShopPolicies({ ...shopPolicies, shipping_policy: e.target.value })}
+                          rows={3}
+                          placeholder="Describe your shipping and delivery policy..."
+                          disabled={isLoading}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {shopPolicies.shipping_policy || "No shipping policy specified"}
+                        </p>
+                      )}
                     </div>
-                    <div>
-                      <h4 className="font-medium mb-2">Warranty</h4>
-                      <p className="text-sm text-muted-foreground">
-                        All refurbished items come with a 90-day warranty. New items have manufacturer warranty.
-                      </p>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentPolicy">Payment Policy</Label>
+                      {isEditing ? (
+                        <Textarea
+                          id="paymentPolicy"
+                          value={shopPolicies.payment_policy}
+                          onChange={(e) => setShopPolicies({ ...shopPolicies, payment_policy: e.target.value })}
+                          rows={3}
+                          placeholder="Describe your payment methods and processing policy..."
+                          disabled={isLoading}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {shopPolicies.payment_policy || "No payment policy specified"}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="warrantyPolicy">Warranty Policy</Label>
+                      {isEditing ? (
+                        <Textarea
+                          id="warrantyPolicy"
+                          value={shopPolicies.warranty_policy}
+                          onChange={(e) => setShopPolicies({ ...shopPolicies, warranty_policy: e.target.value })}
+                          rows={3}
+                          placeholder="Describe your warranty and guarantee policy..."
+                          disabled={isLoading}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {shopPolicies.warranty_policy || "No warranty policy specified"}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="privacyPolicy">Privacy Policy</Label>
+                      {isEditing ? (
+                        <Textarea
+                          id="privacyPolicy"
+                          value={shopPolicies.privacy_policy}
+                          onChange={(e) => setShopPolicies({ ...shopPolicies, privacy_policy: e.target.value })}
+                          rows={3}
+                          placeholder="Describe your privacy and data handling policy..."
+                          disabled={isLoading}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {shopPolicies.privacy_policy || "No privacy policy specified"}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="termsOfService">Terms of Service</Label>
+                      {isEditing ? (
+                        <Textarea
+                          id="termsOfService"
+                          value={shopPolicies.terms_of_service}
+                          onChange={(e) => setShopPolicies({ ...shopPolicies, terms_of_service: e.target.value })}
+                          rows={3}
+                          placeholder="Describe your terms of service and usage policy..."
+                          disabled={isLoading}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {shopPolicies.terms_of_service || "No terms of service specified"}
+                        </p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
