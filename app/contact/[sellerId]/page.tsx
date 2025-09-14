@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Star, MessageCircle, User, Mail, MapPin, Clock, Shield, Loader2, AlertCircle, Check } from "lucide-react"
+import { Star, MessageCircle, User, Mail, MapPin, Clock, Shield, Loader2, AlertCircle, Check, Cpu, ChevronLeft } from "lucide-react"
 import Link from "next/link"
 import { useSeller } from "@/hooks/use-seller"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CartButton } from "@/components/cart-button"
 
 export default function ContactSellerPage({ params }: { params: Promise<{ sellerId: string }> }) {
   const [message, setMessage] = useState("")
@@ -70,36 +71,35 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen">
         {/* Header */}
-        <header className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <Link href="/" className="text-2xl font-bold text-blue-600">
-                TechParts
-              </Link>
-              <nav className="flex items-center space-x-6">
-                <Link href="/parts" className="text-gray-700 hover:text-blue-600">
-                  Browse Parts
-                </Link>
-                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
-                  Dashboard
-                </Link>
-                <Link href="/profile" className="text-gray-700 hover:text-blue-600">
-                  Profile
-                </Link>
-              </nav>
-            </div>
-          </div>
+        <header className="px-4 lg:px-6 h-14 flex items-center border-b">
+          <Link className="flex items-center justify-center" href="/">
+            <Cpu className="h-6 w-6 mr-2 text-blue-600" />
+            <span className="font-bold text-xl">Ibalilam</span>
+          </Link>
+          <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
+              Browse Parts
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+              Dashboard
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
+              Profile
+            </Link>
+            <CartButton />
+          </nav>
         </header>
 
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Contact Seller</h1>
-            <p className="text-gray-600">Get in touch with the part seller</p>
-          </div>
+        <div className="flex-1">
+          <div className="container mx-auto px-4 py-6">
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Contact Seller</h1>
+              <p className="text-gray-600">Get in touch with the part seller</p>
+            </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Loading skeleton for seller profile */}
             <div className="lg:col-span-1">
               <Card>
@@ -139,6 +139,7 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
                 </CardContent>
               </Card>
             </div>
+            </div>
           </div>
         </div>
       </div>
@@ -148,41 +149,41 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen">
         {/* Header */}
-        <header className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <Link href="/" className="text-2xl font-bold text-blue-600">
-                TechParts
-              </Link>
-              <nav className="flex items-center space-x-6">
-                <Link href="/parts" className="text-gray-700 hover:text-blue-600">
-                  Browse Parts
-                </Link>
-                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
-                  Dashboard
-                </Link>
-                <Link href="/profile" className="text-gray-700 hover:text-blue-600">
-                  Profile
-                </Link>
-              </nav>
-            </div>
-          </div>
+        <header className="px-4 lg:px-6 h-14 flex items-center border-b">
+          <Link className="flex items-center justify-center" href="/">
+            <Cpu className="h-6 w-6 mr-2 text-blue-600" />
+            <span className="font-bold text-xl">Ibalilam</span>
+          </Link>
+          <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
+              Browse Parts
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+              Dashboard
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
+              Profile
+            </Link>
+            <CartButton />
+          </nav>
         </header>
 
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <Card className="w-full max-w-md">
-              <CardContent className="flex flex-col items-center justify-center p-8 text-center">
-                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Seller Not Found</h2>
-                <p className="text-gray-600 mb-4">{error}</p>
-                <Button asChild>
-                  <Link href="/parts">Back to Parts</Link>
-                </Button>
-              </CardContent>
-            </Card>
+        <div className="flex-1">
+          <div className="container mx-auto px-4 py-6">
+            <div className="flex items-center justify-center min-h-[400px]">
+              <Card className="w-full max-w-md">
+                <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                  <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">Seller Not Found</h2>
+                  <p className="text-gray-600 mb-4">{error}</p>
+                  <Button asChild>
+                    <Link href="/parts">Back to Parts</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
@@ -192,41 +193,41 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
   // If no seller data, show error
   if (!seller) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen">
         {/* Header */}
-        <header className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <Link href="/" className="text-2xl font-bold text-blue-600">
-                TechParts
-              </Link>
-              <nav className="flex items-center space-x-6">
-                <Link href="/parts" className="text-gray-700 hover:text-blue-600">
-                  Browse Parts
-                </Link>
-                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
-                  Dashboard
-                </Link>
-                <Link href="/profile" className="text-gray-700 hover:text-blue-600">
-                  Profile
-                </Link>
-              </nav>
-            </div>
-          </div>
+        <header className="px-4 lg:px-6 h-14 flex items-center border-b">
+          <Link className="flex items-center justify-center" href="/">
+            <Cpu className="h-6 w-6 mr-2 text-blue-600" />
+            <span className="font-bold text-xl">Ibalilam</span>
+          </Link>
+          <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
+              Browse Parts
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+              Dashboard
+            </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
+              Profile
+            </Link>
+            <CartButton />
+          </nav>
         </header>
 
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <Card className="w-full max-w-md">
-              <CardContent className="flex flex-col items-center justify-center p-8 text-center">
-                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Seller Not Found</h2>
-                <p className="text-gray-600 mb-4">The seller you're looking for doesn't exist or is no longer active.</p>
-                <Button asChild>
-                  <Link href="/parts">Back to Parts</Link>
-                </Button>
-              </CardContent>
-            </Card>
+        <div className="flex-1">
+          <div className="container mx-auto px-4 py-6">
+            <div className="flex items-center justify-center min-h-[400px]">
+              <Card className="w-full max-w-md">
+                <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                  <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+                  <h2 className="text-xl font-semibold text-gray-900 mb-2">Seller Not Found</h2>
+                  <p className="text-gray-600 mb-4">The seller you're looking for doesn't exist or is no longer active.</p>
+                  <Button asChild>
+                    <Link href="/parts">Back to Parts</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
@@ -234,34 +235,41 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen">
       {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="text-2xl font-bold text-blue-600">
-              TechParts
-            </Link>
-            <nav className="flex items-center space-x-6">
-              <Link href="/parts" className="text-gray-700 hover:text-blue-600">
-                Browse Parts
-              </Link>
-              <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
-                Dashboard
-              </Link>
-              <Link href="/profile" className="text-gray-700 hover:text-blue-600">
-                Profile
-              </Link>
-            </nav>
-          </div>
-        </div>
+      <header className="px-4 lg:px-6 h-14 flex items-center border-b">
+        <Link className="flex items-center justify-center" href="/">
+          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
+          <span className="font-bold text-xl">Ibalilam</span>
+        </Link>
+        <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
+            Browse Parts
+          </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+            Dashboard
+          </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
+            Profile
+          </Link>
+          <CartButton />
+        </nav>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Contact Seller</h1>
-          <p className="text-gray-600">Get in touch with the part seller</p>
-        </div>
+      <div className="flex-1">
+        <div className="container mx-auto px-4 py-6">
+          {/* Breadcrumb */}
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
+            <Link href="/parts" className="hover:text-foreground flex items-center">
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Back to Parts
+            </Link>
+          </div>
+
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Contact Seller</h1>
+            <p className="text-gray-600">Get in touch with the part seller</p>
+          </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Seller Profile */}
@@ -476,6 +484,7 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
               </CardContent>
             </Card>
           </div>
+        </div>
         </div>
       </div>
     </div>
