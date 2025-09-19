@@ -28,6 +28,7 @@ export default function SignUpPage() {
     confirmPassword: "",
     agreeToTerms: false,
   })
+  const [emailError, setEmailError] = useState("")
   const router = useRouter()
   const supabase = createClient()
   const { user } = useAuth()
@@ -43,6 +44,26 @@ export default function SignUpPage() {
     setFormData((prev) => ({ ...prev, [field]: value }))
     // Clear error when user starts typing
     if (error) setError("")
+    
+    // Real-time email validation
+    if (field === "email" && typeof value === "string") {
+      if (value.trim() && !validateEmail(value)) {
+        setEmailError("Please enter a valid email address")
+      } else {
+        setEmailError("")
+      }
+    }
+  }
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  const validatePassword = (password: string) => {
+    if (password.length < 6) return "Password must be at least 6 characters long"
+    if (password.length > 128) return "Password must be less than 128 characters"
+    return ""
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,6 +72,37 @@ export default function SignUpPage() {
     setError("")
 
     // Validation
+    if (!formData.firstName.trim()) {
+      setError("First name is required")
+      setIsLoading(false)
+      return
+    }
+
+    if (!formData.lastName.trim()) {
+      setError("Last name is required")
+      setIsLoading(false)
+      return
+    }
+
+    if (!formData.email.trim()) {
+      setError("Email is required")
+      setIsLoading(false)
+      return
+    }
+
+    if (!validateEmail(formData.email)) {
+      setError("Please enter a valid email address")
+      setIsLoading(false)
+      return
+    }
+
+    const passwordError = validatePassword(formData.password)
+    if (passwordError) {
+      setError(passwordError)
+      setIsLoading(false)
+      return
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match")
       setIsLoading(false)
@@ -78,10 +130,17 @@ export default function SignUpPage() {
       if (error) {
         setError(error.message)
       } else if (data.user) {
+        console.log("User created successfully:", data.user)
+        
+        // The user profile should be created automatically by the database trigger
+        // Just redirect the user - no need to manually create profile
+        
         // Check if email confirmation is required
         if (data.user.email_confirmed_at) {
+          console.log("Email already confirmed, redirecting to dashboard")
           router.push("/dashboard")
         } else {
+          console.log("Email confirmation required")
           setError("Please check your email for a confirmation link before signing in.")
         }
       }
@@ -115,9 +174,11 @@ export default function SignUpPage() {
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
                   id="firstName"
+                  name="firstName"
                   placeholder="John"
                   value={formData.firstName}
                   onChange={(e) => handleInputChange("firstName", e.target.value)}
+                  autoComplete="given-name"
                   required
                   disabled={isLoading}
                 />
@@ -126,9 +187,11 @@ export default function SignUpPage() {
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
                   id="lastName"
+                  name="lastName"
                   placeholder="Doe"
                   value={formData.lastName}
                   onChange={(e) => handleInputChange("lastName", e.target.value)}
+                  autoComplete="family-name"
                   required
                   disabled={isLoading}
                 />
@@ -138,23 +201,31 @@ export default function SignUpPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="john@example.com"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
+                autoComplete="email"
                 required
                 disabled={isLoading}
+                className={emailError ? "border-red-500" : ""}
               />
+              {emailError && (
+                <p className="text-sm text-red-500">{emailError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Create a password"
                   value={formData.password}
                   onChange={(e) => handleInputChange("password", e.target.value)}
+                  autoComplete="new-password"
                   required
                   disabled={isLoading}
                 />
@@ -174,10 +245,12 @@ export default function SignUpPage() {
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <Input
                 id="confirmPassword"
+                name="confirmPassword"
                 type="password"
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
                 onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                autoComplete="new-password"
                 required
                 disabled={isLoading}
               />
