@@ -22,6 +22,7 @@ export default function PartsPage() {
   const [selectedConditions, setSelectedConditions] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState({ min: null as number | null, max: null as number | null })
   const [sortBy, setSortBy] = useState<"relevance" | "price-low" | "price-high" | "rating" | "newest">("relevance")
+  const [ficaVerifiedOnly, setFicaVerifiedOnly] = useState(false)
 
   const {
     parts,
@@ -43,9 +44,10 @@ export default function PartsPage() {
       partTypes: selectedPartTypes,
       conditions: selectedConditions,
       priceRange,
-      sortBy
+      sortBy,
+      ficaVerifiedOnly
     })
-  }, [selectedCategories, selectedPartTypes, selectedConditions, priceRange, sortBy, updateFilters])
+  }, [selectedCategories, selectedPartTypes, selectedConditions, priceRange, sortBy, ficaVerifiedOnly, updateFilters])
 
   const handleCategoryChange = (category: string, checked: boolean) => {
     if (checked) {
@@ -97,6 +99,7 @@ export default function PartsPage() {
     setSelectedPartTypes([])
     setSelectedConditions([])
     setPriceRange({ min: null, max: null })
+    setFicaVerifiedOnly(false)
     updateFilters({ search: '' })
   }
 
@@ -260,6 +263,22 @@ export default function PartsPage() {
                         />
                         <Label htmlFor="over100" className="text-sm">
                           Over $100
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium mb-3">Seller Verification</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="fica-verified" 
+                          checked={ficaVerifiedOnly}
+                          onCheckedChange={(checked) => setFicaVerifiedOnly(checked as boolean)}
+                        />
+                        <Label htmlFor="fica-verified" className="text-sm">
+                          FICA Verified Sellers Only
                         </Label>
                       </div>
                     </div>

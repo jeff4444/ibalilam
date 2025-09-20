@@ -37,6 +37,7 @@ import { CartButton } from "@/components/cart-button"
 import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
+import { Shield } from "lucide-react"
 
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,6 +50,7 @@ export default function DashboardPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [partToDelete, setPartToDelete] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
@@ -77,6 +79,28 @@ export default function DashboardPage() {
       router.push("/login")
     }
   }, [user, authLoading, router])
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (user?.id) {
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('user_role')
+            .eq('user_id', user.id)
+            .single()
+          
+          setIsAdmin(profile?.user_role === 'admin')
+        } catch (error) {
+          console.error('Error checking admin status:', error)
+          setIsAdmin(false)
+        }
+      }
+    }
+
+    checkAdminStatus()
+  }, [user?.id, supabase])
 
   // Filter parts based on search and filter criteria
   const filteredOriginalParts = useMemo(() => {
@@ -259,6 +283,14 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between space-y-2">
           <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
           <div className="flex items-center space-x-2">
+            {isAdmin && (
+              <Button asChild variant="secondary">
+                <Link href="/admin">
+                  <Shield className="mr-2 h-4 w-4" />
+                  Admin Panel
+                </Link>
+              </Button>
+            )}
             <Button 
               onClick={refreshData} 
               variant="outline" 

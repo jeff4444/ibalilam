@@ -15,6 +15,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
+import { FicaUpload } from "@/components/fica-upload"
+import { FicaBadge } from "@/components/fica-badge"
+import { useFica } from "@/hooks/use-fica"
 
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
@@ -29,6 +32,9 @@ export default function ProfilePage() {
     location: "",
     bio: "",
     specializations: [] as string[],
+    userRole: "visitor" as "visitor" | "buyer" | "seller" | "admin" | "support",
+    ficaStatus: null as "pending" | "verified" | "rejected" | null,
+    ficaRejectionReason: "",
   })
   const [shopProfile, setShopProfile] = useState({
     name: "",
@@ -51,6 +57,7 @@ export default function ProfilePage() {
   const router = useRouter()
   const { user, loading, signOut } = useAuth()
   const supabase = createClient()
+  const { ficaStatus } = useFica()
 
   // Redirect if not logged in
   useEffect(() => {
@@ -66,7 +73,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('user_profiles')
-            .select('first_name, last_name, phone, location, bio, specializations')
+            .select('first_name, last_name, phone, location, bio, specializations, user_role, fica_status, fica_rejection_reason')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -84,6 +91,9 @@ export default function ProfilePage() {
               location: data.location || "",
               bio: data.bio || "",
               specializations: data.specializations || [],
+              userRole: data.user_role || "visitor",
+              ficaStatus: data.fica_status || null,
+              ficaRejectionReason: data.fica_rejection_reason || "",
             })
           } else {
             // No profile exists yet, set defaults
@@ -95,6 +105,9 @@ export default function ProfilePage() {
               location: "",
               bio: "",
               specializations: [],
+              userRole: "visitor",
+              ficaStatus: null,
+              ficaRejectionReason: "",
             })
           }
         } catch (err) {
@@ -223,7 +236,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('user_profiles')
-            .select('first_name, last_name, phone, location, bio, specializations')
+            .select('first_name, last_name, phone, location, bio, specializations, user_role, fica_status, fica_rejection_reason')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -236,6 +249,9 @@ export default function ProfilePage() {
               location: data.location || "",
               bio: data.bio || "",
               specializations: data.specializations || [],
+              userRole: data.user_role || "visitor",
+              ficaStatus: data.fica_status || null,
+              ficaRejectionReason: data.fica_rejection_reason || "",
             })
           }
         } catch (err) {
@@ -290,6 +306,35 @@ export default function ProfilePage() {
       router.push("/")
     } catch (err) {
       setError("Failed to logout. Please try again.")
+    }
+  }
+
+  const handleBecomeSeller = async () => {
+    try {
+      setIsLoading(true)
+      setError("")
+      
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ user_role: 'seller' })
+        .eq('user_id', user?.id)
+
+      if (error) {
+        setError("Failed to update user role. Please try again.")
+        return
+      }
+
+      setSuccess("Successfully updated to seller role!")
+      setUserProfile(prev => ({ ...prev, userRole: 'seller' }))
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -426,7 +471,10 @@ export default function ProfilePage() {
                     ({stats.reviews} {stats.reviews === 1 ? 'review' : 'reviews'})
                   </span>
                 </div>
-                <Badge variant="secondary">Verified Seller</Badge>
+                <FicaBadge 
+                  status={userProfile.ficaStatus} 
+                  rejectionReason={userProfile.ficaRejectionReason}
+                />
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -478,9 +526,10 @@ export default function ProfilePage() {
           {/* Main Content */}
           <div className="md:col-span-2 space-y-6">
             <Tabs defaultValue="about" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="about">About</TabsTrigger>
                 <TabsTrigger value="shop">Shop Info</TabsTrigger>
+                <TabsTrigger value="fica">FICA Verification</TabsTrigger>
               </TabsList>
 
               <TabsContent value="about" className="space-y-4">
@@ -712,6 +761,40 @@ export default function ProfilePage() {
                         </p>
                       )}
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="fica" className="space-y-4">
+                {userProfile.userRole !== 'seller' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Become a Seller</CardTitle>
+                      <CardDescription>
+                        Start selling on Techafon by becoming a seller
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button 
+                        onClick={handleBecomeSeller}
+                        disabled={isLoading}
+                        className="w-full"
+                      >
+                        {isLoading ? 'Updating...' : 'Become a Seller'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle>FICA Verification</CardTitle>
+                    <CardDescription>
+                      Complete FICA verification to become a verified seller and access loan features
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FicaUpload />
                   </CardContent>
                 </Card>
               </TabsContent>

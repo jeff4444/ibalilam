@@ -6,7 +6,7 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Ibalilam - Buy, Sell & Refurbish Electronic Parts",
+  title: "Techafon - Buy, Sell & Refurbish Electronic Parts",
   description:
     "The ultimate marketplace for electronic components. Find rare parts, sell your inventory, and give old electronics new life through refurbishment.",
 }

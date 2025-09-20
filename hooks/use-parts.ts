@@ -26,6 +26,7 @@ export interface Part {
   shop_name?: string
   shop_rating?: number
   shop_review_count?: number
+  shop_user_id?: string
 }
 
 export interface PartsFilters {
@@ -38,6 +39,7 @@ export interface PartsFilters {
     max: number | null
   }
   sortBy: 'relevance' | 'price-low' | 'price-high' | 'rating' | 'newest'
+  ficaVerifiedOnly: boolean
 }
 
 export function useParts(initialFilters?: Partial<PartsFilters>) {
@@ -53,6 +55,7 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
     conditions: [],
     priceRange: { min: null, max: null },
     sortBy: 'relevance',
+    ficaVerifiedOnly: false,
     ...initialFilters
   })
 
@@ -71,7 +74,8 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
           shops!inner(
             name,
             rating,
-            review_count
+            review_count,
+            user_id
           )
         `)
         .eq('status', 'active') // Only show active parts
@@ -106,6 +110,12 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
       }
       if (filters.priceRange.max !== null) {
         query = query.lte('price', filters.priceRange.max)
+      }
+
+      // Apply FICA verification filter
+      if (filters.ficaVerifiedOnly) {
+        // We'll need to filter this after fetching the data since we can't directly join through user_id
+        // For now, we'll fetch all parts and filter them in the transformation step
       }
 
       // Apply sorting
@@ -145,12 +155,34 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
       }
 
       // Transform the data to include shop information
-      const transformedParts = data?.map(part => ({
+      let transformedParts = data?.map(part => ({
         ...part,
         shop_name: (part.shops as any)?.name,
         shop_rating: (part.shops as any)?.rating,
         shop_review_count: (part.shops as any)?.review_count,
+        shop_user_id: (part.shops as any)?.user_id,
       })) || []
+
+      // Apply FICA verification filter if needed
+      if (filters.ficaVerifiedOnly && transformedParts.length > 0) {
+        // Get unique user IDs from shops
+        const shopUserIds = [...new Set(transformedParts.map(part => part.shop_user_id))]
+        
+        // Fetch user profiles for these users
+        const { data: userProfiles, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('user_id, fica_status')
+          .in('user_id', shopUserIds)
+          .eq('fica_status', 'verified')
+
+        if (profilesError) {
+          console.warn('Failed to fetch user profiles for FICA filtering:', profilesError)
+        } else {
+          // Filter parts to only include those from FICA verified sellers
+          const verifiedUserIds = new Set(userProfiles?.map(profile => profile.user_id) || [])
+          transformedParts = transformedParts.filter(part => verifiedUserIds.has(part.shop_user_id))
+        }
+      }
 
       setParts(transformedParts)
 

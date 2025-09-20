@@ -10,14 +10,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Upload, X, Plus, Package, DollarSign, Camera, Cpu, Wrench } from "lucide-react"
+import { CartButton } from "@/components/cart-button"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
+import { useFica } from "@/hooks/use-fica"
+import { FicaBadge } from "@/components/fica-badge"
 
 export default function SellPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const supabase = createClient()
+  const { ficaStatus, canPublishListings } = useFica()
   
   // Form data state
   const [formData, setFormData] = useState({
@@ -91,6 +95,12 @@ export default function SellPage() {
     setSuccess("")
 
     try {
+      // Check FICA verification status
+      if (!canPublishListings()) {
+        setError("You must complete FICA verification to publish listings. Please complete your FICA verification in your profile.")
+        setIsLoading(false)
+        return
+      }
       // Get user's shop
       const { data: shop, error: shopError } = await supabase
         .from('shops')
@@ -195,31 +205,31 @@ export default function SellPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen">
       {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center">
-              <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-              <span className="text-2xl font-bold text-blue-600">Ibalilam</span>
-            </Link>
-            <nav className="flex items-center space-x-6">
-              <Link href="/parts" className="text-gray-700 hover:text-blue-600">
-                Browse Parts
-              </Link>
-              <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
-                Dashboard
-              </Link>
-              <Link href="/profile" className="text-gray-700 hover:text-blue-600">
-                Profile
-              </Link>
-            </nav>
-          </div>
-        </div>
+      <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
+        <Link className="flex items-center justify-center" href="/">
+          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
+          <span className="font-bold text-xl">Techafon</span>
+        </Link>
+        <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
+            Browse Parts
+          </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+            Favorites
+          </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+            Dashboard
+          </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
+            Profile
+          </Link>
+          <CartButton />
+        </nav>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="flex-1 max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">List a New Part</h1>
           <p className="text-gray-600">Add your electronic component to the marketplace</p>
@@ -237,6 +247,42 @@ export default function SellPage() {
             <AlertDescription className="text-green-800">{success}</AlertDescription>
           </Alert>
         )}
+
+        {/* FICA Verification Status */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Seller Verification Status
+            </CardTitle>
+            <CardDescription>
+              Your current verification status for publishing listings
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FicaBadge 
+                  status={ficaStatus?.fica_status || null} 
+                  rejectionReason={ficaStatus?.fica_rejection_reason}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {canPublishListings() 
+                    ? "You can publish listings" 
+                    : "Complete FICA verification to publish listings"
+                  }
+                </span>
+              </div>
+              {!canPublishListings() && (
+                <Link href="/profile?tab=fica">
+                  <Button variant="outline" size="sm">
+                    Complete Verification
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Part Type Selection */}

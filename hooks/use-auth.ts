@@ -35,10 +35,20 @@ export function useAuth() {
     await supabase.auth.signOut()
   }
 
+  const clearAuthCache = async () => {
+    // Clear all auth data
+    await supabase.auth.signOut()
+    // Force refresh the session
+    const { data: { session } } = await supabase.auth.getSession()
+    setSession(session)
+    setUser(session?.user ?? null)
+  }
+
   return {
     user,
     session,
     loading,
     signOut,
+    clearAuthCache,
   }
 }

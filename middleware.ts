@@ -41,8 +41,23 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith(route)
   );
 
+  // Admin routes that require admin role
+  const adminRoutes = ['/admin'];
+  const isAdminRoute = adminRoutes.some(route => 
+    request.nextUrl.pathname.startsWith(route)
+  );
+
   // If accessing a protected route without authentication, redirect to login
   if (isProtectedRoute && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('redirectTo', request.nextUrl.pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // If accessing an admin route, just check if user is authenticated
+  // Let the admin pages handle their own role checking
+  if (isAdminRoute && !user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirectTo', request.nextUrl.pathname);

@@ -36,6 +36,7 @@ export default function SignUpPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
+      console.log('user already logged in redirecting to dashboard', user)
       router.push("/dashboard")
     }
   }, [user, router])
