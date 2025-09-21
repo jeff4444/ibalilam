@@ -32,6 +32,7 @@ import { useCartStore } from "@/lib/cart-store"
 import { CartButton } from "@/components/cart-button"
 import { usePart } from "@/hooks/use-part"
 import { useAuth } from "@/hooks/use-auth"
+import { useMOQ } from "@/hooks/use-moq"
 import { createClient } from "@/utils/supabase/client"
 
 export default function PartDetailPage() {
@@ -42,12 +43,58 @@ export default function PartDetailPage() {
   const [isLiked, setIsLiked] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [shareSuccess, setShareSuccess] = useState(false)
+  const [quantityError, setQuantityError] = useState("")
+  const [priceTiers, setPriceTiers] = useState<Array<{ min_qty: number; unit_price: number }>>([])
 
   const { part, loading, error } = usePart(partId)
   const addToCart = useCartStore((state) => state.addItem)
   const { toast } = useToast()
   const { user } = useAuth()
+  const { getPriceTiers } = useMOQ()
   const supabase = createClient()
+
+  // Function to validate quantity based on MOQ rules
+  const validateQuantity = (qty: number) => {
+    if (!part) return { isValid: true, error: "", suggestedQty: qty }
+    
+    const moq = part.moq_units || 1
+    const increment = part.order_increment || 1
+    const packSize = part.pack_size_units
+    
+    let error = ""
+    let suggestedQty = qty
+    
+    // Check minimum quantity
+    if (qty < moq) {
+      error += `Minimum order quantity is ${moq} units. `
+      suggestedQty = moq
+    }
+    
+    // Check pack size (takes precedence over order increment)
+    if (packSize) {
+      if (qty % packSize !== 0) {
+        error += `Quantity must be in packs of ${packSize}. `
+        suggestedQty = Math.ceil(qty / packSize) * packSize
+      }
+    } else {
+      // Check order increment only if no pack size
+      if (qty % increment !== 0) {
+        error += `Quantity must be in increments of ${increment}. `
+        suggestedQty = Math.ceil(qty / increment) * increment
+      }
+    }
+    
+    // Ensure suggested quantity meets MOQ
+    if (suggestedQty < moq) {
+      suggestedQty = moq
+    }
+    
+    return {
+      isValid: error === "",
+      error: error.trim(),
+      suggestedQty
+    }
+  }
 
   // Load liked status from database on component mount
   useEffect(() => {
@@ -86,8 +133,48 @@ export default function PartDetailPage() {
     checkIfLiked()
   }, [partId, user?.id, supabase])
 
+  // Initialize quantity based on MOQ when part loads
+  useEffect(() => {
+    if (part) {
+      const moq = part.moq_units || 1
+      setQuantity(moq)
+      setQuantityError("")
+    }
+  }, [part])
+
+  // Fetch price tiers for phone parts and accessories
+  useEffect(() => {
+    const fetchPriceTiers = async () => {
+      if (part && (part.category === 'phone_parts' || part.category === 'phone_accessories')) {
+        try {
+          const tiers = await getPriceTiers(part.id)
+          setPriceTiers(tiers)
+        } catch (error) {
+          console.error('Error fetching price tiers:', error)
+        }
+      }
+    }
+
+    fetchPriceTiers()
+  }, [part, getPriceTiers])
+
   const handleAddToCart = () => {
     if (!part) return
+    
+    // Validate quantity before adding to cart
+    const validation = validateQuantity(quantity)
+    if (!validation.isValid) {
+      setQuantityError(validation.error)
+      toast({
+        title: "Invalid quantity",
+        description: validation.error,
+        variant: "destructive",
+      })
+      return
+    }
+    
+    // Clear any previous errors
+    setQuantityError("")
     
     addToCart({
       id: part.id,
@@ -338,14 +425,63 @@ export default function PartDetailPage() {
             <div className="space-y-4">
               <div className="aspect-square rounded-lg border overflow-hidden">
                 <Image
-                  src={part.image_url || "/placeholder.svg"}
+                  src={
+                    part.images && part.images.length > 0 
+                      ? part.images[selectedImage] 
+                      : part.image_url || "/placeholder.svg"
+                  }
                   alt={part.name}
                   width={500}
                   height={500}
                   className="w-full h-full object-cover"
                 />
               </div>
-              {/* For now, we'll show a single image. In the future, you could add multiple images */}
+              
+              {/* Multiple images if available */}
+              {part.images && part.images.length > 1 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {selectedImage + 1} of {part.images.length} images
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {part.images.map((image, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setSelectedImage(index)}
+                        className={`aspect-square rounded-lg border overflow-hidden transition-all ${
+                          selectedImage === index 
+                            ? 'ring-2 ring-blue-500 border-blue-500' 
+                            : 'hover:border-gray-300'
+                        }`}
+                      >
+                        <Image
+                          src={image}
+                          alt={`${part.name} - Image ${index + 1}`}
+                          width={100}
+                          height={100}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Show image count if there are multiple images */}
+              {part.images && part.images.length > 1 && (
+                <div className="flex justify-center space-x-2">
+                  {part.images.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setSelectedImage(index)}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        selectedImage === index ? 'bg-blue-500' : 'bg-gray-300'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+              
               <div className="text-center text-sm text-muted-foreground">
                 {part.views} views
               </div>
@@ -368,6 +504,12 @@ export default function PartDetailPage() {
                   </div>
                   <span className="text-muted-foreground">•</span>
                   <span className="text-sm text-muted-foreground">{part.stock_quantity} in stock</span>
+                  {part.location_city && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-sm text-muted-foreground">{part.location_city}</span>
+                    </>
+                  )}
                 </div>
                 <p className="text-muted-foreground">{part.description}</p>
               </div>
@@ -375,17 +517,17 @@ export default function PartDetailPage() {
               {/* Price */}
               <div className="space-y-2">
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-3xl font-bold">${part.price.toFixed(2)}</span>
+                  <span className="text-3xl font-bold">R{part.price.toFixed(2)}</span>
                   {part.part_type === 'refurbished' && part.cost && part.cost > 0 && (
-                    <span className="text-lg text-muted-foreground line-through">${part.cost.toFixed(2)}</span>
+                    <span className="text-lg text-muted-foreground line-through">R{part.cost.toFixed(2)}</span>
                   )}
                   {part.part_type === 'refurbished' && part.cost && part.cost > 0 && (
-                    <Badge variant="destructive">Save ${(part.cost - part.price).toFixed(2)}</Badge>
+                    <Badge variant="destructive">Save R{(part.cost - part.price).toFixed(2)}</Badge>
                   )}
                 </div>
                 {part.part_type === 'refurbished' && part.profit && (
                   <p className="text-sm text-green-600 font-medium">
-                    Profit: ${part.profit.toFixed(2)}
+                    Profit: R{part.profit.toFixed(2)}
                   </p>
                 )}
               </div>
@@ -428,7 +570,12 @@ export default function PartDetailPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                        onClick={() => {
+                          const newQty = Math.max(1, quantity - 1)
+                          const validation = validateQuantity(newQty)
+                          setQuantity(validation.suggestedQty)
+                          setQuantityError(validation.error)
+                        }}
                         disabled={quantity <= 1}
                       >
                         <Minus className="h-4 w-4" />
@@ -437,7 +584,12 @@ export default function PartDetailPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setQuantity(Math.min(part.stock_quantity, quantity + 1))}
+                        onClick={() => {
+                          const newQty = Math.min(part.stock_quantity, quantity + 1)
+                          const validation = validateQuantity(newQty)
+                          setQuantity(validation.suggestedQty)
+                          setQuantityError(validation.error)
+                        }}
                         disabled={quantity >= part.stock_quantity}
                       >
                         <Plus className="h-4 w-4" />
@@ -445,6 +597,27 @@ export default function PartDetailPage() {
                     </div>
                   </div>
                 </div>
+                
+                {/* MOQ Information for phone parts and accessories */}
+                {(part.category === 'phone_parts' || part.category === 'phone_accessories') && (
+                  <div className="text-sm text-muted-foreground">
+                    <p>Min order: {part.moq_units || 1} units</p>
+                    {part.pack_size_units && (
+                      <p>Pack size: {part.pack_size_units} units per pack</p>
+                    )}
+                    {!part.pack_size_units && part.order_increment && part.order_increment > 1 && (
+                      <p>Order in increments of: {part.order_increment} units</p>
+                    )}
+                  </div>
+                )}
+                
+                {/* Quantity Error */}
+                {quantityError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{quantityError}</AlertDescription>
+                  </Alert>
+                )}
 
                 <div className="flex space-x-3">
                   <Button 
@@ -500,9 +673,12 @@ export default function PartDetailPage() {
 
           {/* Product Details Tabs */}
           <Tabs defaultValue="details" className="mb-8">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="refurbishment">Refurbishment</TabsTrigger>
+              {(part.category === 'phone_parts' || part.category === 'phone_accessories') && (
+                <TabsTrigger value="moq">Order Info</TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="details" className="mt-6">
@@ -514,8 +690,14 @@ export default function PartDetailPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex justify-between py-2 border-b">
                       <span className="font-medium">Category</span>
-                      <span className="text-muted-foreground">{part.category}</span>
+                      <span className="text-muted-foreground">{part.category.replace('_', ' ')}</span>
                     </div>
+                    {part.subcategory && (
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Subcategory</span>
+                        <span className="text-muted-foreground capitalize">{part.subcategory.replace('_', ' ')}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-2 border-b">
                       <span className="font-medium">Part Type</span>
                       <span className="text-muted-foreground capitalize">{part.part_type}</span>
@@ -524,6 +706,24 @@ export default function PartDetailPage() {
                       <span className="font-medium">Status</span>
                       <span className="text-muted-foreground capitalize">{part.status}</span>
                     </div>
+                    {part.brand && (
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Brand</span>
+                        <span className="text-muted-foreground">{part.brand}</span>
+                      </div>
+                    )}
+                    {part.model && (
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Model</span>
+                        <span className="text-muted-foreground">{part.model}</span>
+                      </div>
+                    )}
+                    {part.location_city && (
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Location</span>
+                        <span className="text-muted-foreground">{part.location_city}{part.location_town && `, ${part.location_town}`}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-2 border-b">
                       <span className="font-medium">Stock Quantity</span>
                       <span className="text-muted-foreground">{part.stock_quantity}</span>
@@ -539,6 +739,159 @@ export default function PartDetailPage() {
                       </span>
                     </div>
                   </div>
+                  
+                  {/* Category-specific fields */}
+                  {part.category === 'mobile_phones' && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="font-medium mb-3">Phone Specifications</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {part.storage_capacity && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Storage Capacity</span>
+                            <span className="text-muted-foreground">{part.storage_capacity}</span>
+                          </div>
+                        )}
+                        {part.imei && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">IMEI</span>
+                            <span className="text-muted-foreground font-mono text-xs">{part.imei}</span>
+                          </div>
+                        )}
+                        {part.network_status && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Network Status</span>
+                            <span className="text-muted-foreground capitalize">{part.network_status}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="font-medium">Includes Box</span>
+                          <span className="text-muted-foreground">{part.has_box ? 'Yes' : 'No'}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="font-medium">Includes Charger</span>
+                          <span className="text-muted-foreground">{part.has_charger ? 'Yes' : 'No'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {part.category === 'phone_parts' && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="font-medium mb-3">Part Specifications</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {part.part_type_detail && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Part Type</span>
+                            <span className="text-muted-foreground capitalize">{part.part_type_detail.replace('_', ' ')}</span>
+                          </div>
+                        )}
+                        {part.model_compatibility && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Model Compatibility</span>
+                            <span className="text-muted-foreground">{part.model_compatibility}</span>
+                          </div>
+                        )}
+                        {part.moq && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Minimum Order Quantity</span>
+                            <span className="text-muted-foreground">{part.moq} units</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {part.category === 'phone_accessories' && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="font-medium mb-3">Accessory Specifications</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {part.accessory_type && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Accessory Type</span>
+                            <span className="text-muted-foreground capitalize">{part.accessory_type.replace('_', ' ')}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {part.category === 'laptops' && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="font-medium mb-3">Laptop Specifications</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {part.cpu && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">CPU</span>
+                            <span className="text-muted-foreground">{part.cpu}</span>
+                          </div>
+                        )}
+                        {part.ram && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">RAM</span>
+                            <span className="text-muted-foreground">{part.ram}</span>
+                          </div>
+                        )}
+                        {part.storage && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Storage</span>
+                            <span className="text-muted-foreground">{part.storage}</span>
+                          </div>
+                        )}
+                        {part.screen_size && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Screen Size</span>
+                            <span className="text-muted-foreground">{part.screen_size}</span>
+                          </div>
+                        )}
+                        {part.battery_health && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Battery Health</span>
+                            <span className="text-muted-foreground">{part.battery_health}%</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {part.category === 'steam_kits' && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="font-medium mb-3">STEAM Kit Specifications</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {part.kit_type && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Kit Type</span>
+                            <span className="text-muted-foreground capitalize">{part.kit_type}</span>
+                          </div>
+                        )}
+                        {part.age_group && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Age Group</span>
+                            <span className="text-muted-foreground">{part.age_group}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {part.category === 'other_electronics' && (
+                    <div className="mt-6 pt-4 border-t">
+                      <h4 className="font-medium mb-3">Electronics Specifications</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {part.electronics_subcategory && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Subcategory</span>
+                            <span className="text-muted-foreground capitalize">{part.electronics_subcategory}</span>
+                          </div>
+                        )}
+                        {part.key_specs && (
+                          <div className="flex justify-between py-2 border-b">
+                            <span className="font-medium">Key Specifications</span>
+                            <span className="text-muted-foreground">{part.key_specs}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -568,13 +921,13 @@ export default function PartDetailPage() {
                       <div className="flex justify-between py-2 border-b">
                         <span className="font-medium">Refurbishment Cost</span>
                         <span className="text-muted-foreground">
-                          {part.cost ? `$${part.cost.toFixed(2)}` : 'N/A'}
+                          {part.cost ? `R${part.cost.toFixed(2)}` : 'N/A'}
                         </span>
                       </div>
                       <div className="flex justify-between py-2 border-b">
                         <span className="font-medium">Profit</span>
                         <span className="text-muted-foreground">
-                          {part.profit ? `$${part.profit.toFixed(2)}` : 'N/A'}
+                          {part.profit ? `R${part.profit.toFixed(2)}` : 'N/A'}
                         </span>
                       </div>
                     </div>
@@ -584,6 +937,73 @@ export default function PartDetailPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {(part.category === 'phone_parts' || part.category === 'phone_accessories') && (
+              <TabsContent value="moq" className="mt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Order Quantity Information</CardTitle>
+                    <CardDescription>Minimum order requirements and quantity rules</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Minimum Order Quantity (MOQ)</span>
+                        <span className="text-muted-foreground">{part.moq_units || 1} units</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Order Increment</span>
+                        <span className="text-muted-foreground">{part.order_increment || 1} units</span>
+                      </div>
+                      {part.pack_size_units && (
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="font-medium">Pack Size</span>
+                          <span className="text-muted-foreground">{part.pack_size_units} units per pack</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Stock on Hand</span>
+                        <span className="text-muted-foreground">{part.stock_on_hand_units || 0} units</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b">
+                        <span className="font-medium">Backorders Allowed</span>
+                        <span className="text-muted-foreground">
+                          {part.backorder_allowed ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                      {part.backorder_allowed && part.lead_time_days && (
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="font-medium">Lead Time</span>
+                          <span className="text-muted-foreground">{part.lead_time_days} days</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Price Tiers */}
+                    {priceTiers.length > 0 && (
+                      <div className="mt-6 pt-4 border-t">
+                        <h4 className="font-medium mb-3">Volume Pricing</h4>
+                        <div className="space-y-2">
+                          {priceTiers.map((tier, index) => (
+                            <div key={index} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-md">
+                              <span className="font-medium">
+                                {tier.min_qty}+ units
+                              </span>
+                              <span className="text-green-600 font-semibold">
+                                R{tier.unit_price.toFixed(2)} per unit
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Higher quantities may qualify for better pricing
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
           </Tabs>
 
@@ -604,7 +1024,7 @@ export default function PartDetailPage() {
                       />
                       <h3 className="font-medium mb-2 line-clamp-2">{relatedPart.name}</h3>
                       <div className="flex items-center justify-between">
-                        <span className="font-bold">${relatedPart.price.toFixed(2)}</span>
+                        <span className="font-bold">R{relatedPart.price.toFixed(2)}</span>
                         <div className="flex items-center space-x-1">
                           <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                           <span className="text-xs">{relatedPart.shop_rating.toFixed(1)}</span>

@@ -24,6 +24,7 @@ export interface PartDetail {
   time_spent_hours: number | null
   profit: number | null
   image_url: string | null
+  images: string[] | null
   views: number
   created_at: string
   updated_at: string
@@ -58,6 +59,14 @@ export interface PartDetail {
   // Other Electronics specific fields
   electronics_subcategory: string | null // TV/Audio/Gaming/Networking/Power
   key_specs: string | null
+  
+  // MOQ fields
+  moq_units: number | null
+  order_increment: number | null
+  pack_size_units: number | null
+  stock_on_hand_units: number | null
+  backorder_allowed: boolean | null
+  lead_time_days: number | null
   
   // Shop information
   shop_name?: string
