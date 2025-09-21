@@ -1,6 +1,6 @@
-# Ibalilam Database Schema
+# Techafon Database Schema
 
-This directory contains the database migrations for the Ibalilam electronics marketplace platform.
+This directory contains the database migrations for the Techafon electronics marketplace platform.
 
 ## Database Tables
 

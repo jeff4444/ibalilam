@@ -49,7 +49,7 @@ The contact seller feature is now fully implemented with proper API endpoints an
 
 ## Email Features
 - **Reply-To**: Set to buyer's email for direct communication
-- **Subject**: Prefixed with `[Ibalilam]` for identification
+- **Subject**: Prefixed with `[Techafon]` for identification
 - **Content**: Includes buyer info, part details, and message
 - **Professional**: Includes footer with platform branding
 

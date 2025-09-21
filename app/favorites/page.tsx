@@ -230,7 +230,7 @@ export default function FavoritesPage() {
         <header className="px-4 lg:px-6 h-14 flex items-center border-b">
           <Link className="flex items-center justify-center" href="/">
             <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-            <span className="font-bold text-xl">Ibalilam</span>
+            <span className="font-bold text-xl">Techafon</span>
           </Link>
           <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
@@ -261,7 +261,7 @@ export default function FavoritesPage() {
       <header className="px-4 lg:px-6 h-14 flex items-center border-b">
         <Link className="flex items-center justify-center" href="/">
           <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Ibalilam</span>
+          <span className="font-bold text-xl">Techafon</span>
         </Link>
         <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">

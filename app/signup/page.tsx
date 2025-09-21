@@ -158,7 +158,7 @@ export default function SignUpPage() {
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <Cpu className="h-8 w-8 mr-2" />
-            <span className="text-2xl font-bold">Ibalilam</span>
+            <span className="text-2xl font-bold">Techafon</span>
           </div>
           <CardTitle className="text-2xl text-center">Create your account</CardTitle>
           <CardDescription className="text-center">Join the electronics marketplace community</CardDescription>

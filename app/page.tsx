@@ -24,7 +24,7 @@ export default function HomePage() {
       <header className="px-4 lg:px-6 h-14 flex items-center border-b sticky top-0 z-30 bg-white">
         <Link className="flex items-center justify-center" href="/">
           <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Ibalilam</span>
+          <span className="font-bold text-xl">Techafon</span>
         </Link>
         <nav className="ml-auto flex gap-4 sm:gap-6">
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
@@ -251,7 +251,7 @@ export default function HomePage() {
           <div className="container px-4 md:px-6">
             <div className="grid gap-6 lg:grid-cols-[1fr_500px] lg:gap-12 xl:grid-cols-[1fr_550px]">
               <div className="flex flex-col justify-center space-y-4">
-                <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">Why Choose Ibalilam?</h2>
+                <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">Why Choose Techafon?</h2>
                 <p className="text-gray-500 md:text-xl">
                   Join the community of technicians and electronics enthusiasts with our trusted marketplace platform.
                 </p>
@@ -316,7 +316,7 @@ export default function HomePage() {
               <div className="space-y-2">
                 <h2 className="text-3xl font-bold tracking-tighter sm:text-5xl">Ready to Start Trading?</h2>
                 <p className="max-w-[600px] text-blue-100 md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  Join thousands of electronics technicians already using Ibalilam.
+                  Join thousands of electronics technicians already using Techafon.
                 </p>
               </div>
               <div className="flex flex-col gap-2 min-[400px]:flex-row">
@@ -440,9 +440,9 @@ export default function HomePage() {
           <div className="flex flex-col md:flex-row justify-between items-center border-t border-gray-200 mt-8 pt-8">
             <div className="flex items-center mb-4 md:mb-0">
               <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-              <span className="font-bold">Ibalilam</span>
+              <span className="font-bold">Techafon</span>
             </div>
-            <p className="text-sm text-gray-500">© 2024 Ibalilam. All rights reserved.</p>
+            <p className="text-sm text-gray-500">© 2024 Techafon. All rights reserved.</p>
           </div>
         </div>
       </footer>

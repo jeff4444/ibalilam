@@ -76,12 +76,12 @@ export async function POST(request: NextRequest) {
       ? `${currentUserProfile.first_name} ${currentUserProfile.last_name}`
       : user.email
 
-    const emailSubject = `[Ibalilam] ${subject}`
+    const emailSubject = `[Techafon] ${subject}`
     
     const emailBody = `
 Hello ${sellerName},
 
-You have received a new message from a potential buyer on Ibalilam:
+You have received a new message from a potential buyer on Techafon:
 
 From: ${buyerName} (${user.email})
 Subject: ${subject}
@@ -91,10 +91,10 @@ Message:
 ${message}
 
 ---
-This message was sent through Ibalilam. Please reply directly to this email to respond to the buyer.
+This message was sent through Techafon. Please reply directly to this email to respond to the buyer.
 
 Best regards,
-The Ibalilam Team
+The Techafon Team
     `.trim()
 
     // For now, we'll log the email (in production, you'd use a service like SendGrid, Resend, etc.)
@@ -109,7 +109,7 @@ The Ibalilam Team
     // Example with Resend:
     // const resend = new Resend(process.env.RESEND_API_KEY)
     // await resend.emails.send({
-    //   from: 'noreply@ibalilam.com',
+    //   from: 'noreply@techafon.com',
     //   to: sellerUser.user.email,
     //   replyTo: user.email,
     //   subject: emailSubject,
