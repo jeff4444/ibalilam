@@ -5,7 +5,15 @@ export interface PartDetail {
   id: string
   name: string
   description: string | null
-  category: string
+  category: 'mobile_phones' | 'phone_parts' | 'phone_accessories' | 'laptops' | 'steam_kits' | 'other_electronics'
+  subcategory: string | null
+  brand: string | null
+  model: string | null
+  location_city: string | null
+  location_town: string | null
+  condition_status: 'new' | 'refurbished' | 'used' | null
+  has_box: boolean | null
+  has_charger: boolean | null
   price: number
   cost: number | null
   stock_quantity: number
@@ -22,6 +30,35 @@ export interface PartDetail {
   published_at: string | null
   shop_id: string
   search_keywords: string[]
+  
+  // Phone-specific fields
+  storage_capacity: string | null
+  imei: string | null
+  network_status: string | null
+  
+  // Phone Parts specific fields
+  part_type_detail: string | null // Screen/Battery/Charging Port/Camera/etc.
+  model_compatibility: string | null // e.g., "Samsung A30"
+  moq: number | null // Minimum Order Quantity
+  
+  // Phone Accessories specific fields
+  accessory_type: string | null // Charger/Case/Earphones/etc.
+  
+  // Laptop specific fields
+  cpu: string | null
+  ram: string | null
+  storage: string | null
+  screen_size: string | null
+  battery_health: number | null
+  
+  // STEAM Kits specific fields
+  kit_type: string | null // Coding/Robotics/AI
+  age_group: string | null
+  
+  // Other Electronics specific fields
+  electronics_subcategory: string | null // TV/Audio/Gaming/Networking/Power
+  key_specs: string | null
+  
   // Shop information
   shop_name?: string
   shop_description?: string

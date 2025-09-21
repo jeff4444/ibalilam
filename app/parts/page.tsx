@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Cpu, Search, Grid, List, Star, ShoppingCart, Filter, X } from "lucide-react"
+import { Cpu, Search, Grid, List, Star, ShoppingCart, Filter, X, Smartphone, Laptop, Gamepad2, Wrench, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,14 +15,29 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CartButton } from "@/components/cart-button"
 import { useParts } from "@/hooks/use-parts"
 
+// Category configuration with icons and names
+const CATEGORY_CONFIG = {
+  mobile_phones: { name: "Mobile Phones", icon: Smartphone, subcategories: ["smartphones", "feature_phones"] },
+  phone_parts: { name: "Phone Parts", icon: Wrench, subcategories: ["screen", "battery", "charging_port", "camera", "speaker", "microphone", "housing", "other"] },
+  phone_accessories: { name: "Phone Accessories", icon: Package, subcategories: ["charger", "case", "earphones", "screen_protector", "cable", "other"] },
+  laptops: { name: "Laptops", icon: Laptop, subcategories: ["gaming", "business", "ultrabook", "workstation", "chromebook", "other"] },
+  steam_kits: { name: "STEAM Kits", icon: Gamepad2, subcategories: ["coding", "robotics", "ai", "electronics", "other"] },
+  other_electronics: { name: "Other Electronics", icon: Cpu, subcategories: ["tv", "audio", "gaming", "networking", "power", "other"] }
+}
+
 export default function PartsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [selectedPartTypes, setSelectedPartTypes] = useState<string[]>([])
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([])
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([])
+  const [selectedModels, setSelectedModels] = useState<string[]>([])
   const [selectedConditions, setSelectedConditions] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState({ min: null as number | null, max: null as number | null })
-  const [sortBy, setSortBy] = useState<"relevance" | "price-low" | "price-high" | "rating" | "newest">("relevance")
+  const [location, setLocation] = useState("")
+  const [sortBy, setSortBy] = useState<"relevance" | "price-low" | "price-high" | "rating" | "newest" | "most-viewed">("relevance")
   const [ficaVerifiedOnly, setFicaVerifiedOnly] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
 
   const {
     parts,
@@ -33,35 +48,62 @@ export default function PartsPage() {
     updateFilters,
     categories,
     conditions,
+    categoryHierarchy,
     refresh
   } = useParts()
 
   // Update filters when local state changes
   useEffect(() => {
     updateFilters({
-      search: filters.search,
+      search: searchTerm,
       categories: selectedCategories,
-      partTypes: selectedPartTypes,
+      subcategories: selectedSubcategories,
+      brands: selectedBrands,
+      models: selectedModels,
       conditions: selectedConditions,
       priceRange,
+      location,
       sortBy,
       ficaVerifiedOnly
     })
-  }, [selectedCategories, selectedPartTypes, selectedConditions, priceRange, sortBy, ficaVerifiedOnly, updateFilters])
+  }, [searchTerm, selectedCategories, selectedSubcategories, selectedBrands, selectedModels, selectedConditions, priceRange, location, sortBy, ficaVerifiedOnly, updateFilters])
 
   const handleCategoryChange = (category: string, checked: boolean) => {
     if (checked) {
       setSelectedCategories([...selectedCategories, category])
+      // Clear subcategories when category changes
+      setSelectedSubcategories([])
     } else {
-      setSelectedCategories(selectedCategories.filter((c) => c !== category))
+      setSelectedCategories(selectedCategories.filter(c => c !== category))
+      // Remove subcategories of unchecked category
+      const categoryConfig = CATEGORY_CONFIG[category as keyof typeof CATEGORY_CONFIG]
+      if (categoryConfig) {
+        setSelectedSubcategories(selectedSubcategories.filter(sub => !categoryConfig.subcategories.includes(sub)))
+      }
     }
   }
 
-  const handlePartTypeChange = (partType: string, checked: boolean) => {
+  const handleSubcategoryChange = (subcategory: string, checked: boolean) => {
     if (checked) {
-      setSelectedPartTypes([...selectedPartTypes, partType])
+      setSelectedSubcategories([...selectedSubcategories, subcategory])
     } else {
-      setSelectedPartTypes(selectedPartTypes.filter((t) => t !== partType))
+      setSelectedSubcategories(selectedSubcategories.filter(s => s !== subcategory))
+    }
+  }
+
+  const handleBrandChange = (brand: string, checked: boolean) => {
+    if (checked) {
+      setSelectedBrands([...selectedBrands, brand])
+    } else {
+      setSelectedBrands(selectedBrands.filter(b => b !== brand))
+    }
+  }
+
+  const handleModelChange = (model: string, checked: boolean) => {
+    if (checked) {
+      setSelectedModels([...selectedModels, model])
+    } else {
+      setSelectedModels(selectedModels.filter(m => m !== model))
     }
   }
 
@@ -69,44 +111,48 @@ export default function PartsPage() {
     if (checked) {
       setSelectedConditions([...selectedConditions, condition])
     } else {
-      setSelectedConditions(selectedConditions.filter((c) => c !== condition))
+      setSelectedConditions(selectedConditions.filter(c => c !== condition))
     }
   }
 
-  const handlePriceRangeChange = (range: string, checked: boolean) => {
-    if (checked) {
-      switch (range) {
-        case 'under10':
-          setPriceRange({ min: 0, max: 10 })
-          break
-        case '10to50':
-          setPriceRange({ min: 10, max: 50 })
-          break
-        case '50to100':
-          setPriceRange({ min: 50, max: 100 })
-          break
-        case 'over100':
-          setPriceRange({ min: 100, max: null })
-          break
-      }
-    } else {
-      setPriceRange({ min: null, max: null })
-    }
-  }
-
-  const clearFilters = () => {
+  const clearAllFilters = () => {
+    setSearchTerm("")
     setSelectedCategories([])
-    setSelectedPartTypes([])
+    setSelectedSubcategories([])
+    setSelectedBrands([])
+    setSelectedModels([])
     setSelectedConditions([])
     setPriceRange({ min: null, max: null })
+    setLocation("")
+    setSortBy("relevance")
     setFicaVerifiedOnly(false)
-    updateFilters({ search: '' })
+  }
+
+  // Get unique brands and models from parts
+  const availableBrands = Array.from(new Set(parts.map(part => part.brand).filter(Boolean))) as string[]
+  const availableModels = Array.from(new Set(parts.map(part => part.model).filter(Boolean))) as string[]
+
+  // Get available subcategories based on selected categories
+  const availableSubcategories = selectedCategories.length > 0 
+    ? selectedCategories.flatMap(category => CATEGORY_CONFIG[category as keyof typeof CATEGORY_CONFIG]?.subcategories || [])
+    : Object.values(CATEGORY_CONFIG).flatMap(config => config.subcategories)
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR'
+    }).format(price)
+  }
+
+  const getCategoryIcon = (category: string) => {
+    const config = CATEGORY_CONFIG[category as keyof typeof CATEGORY_CONFIG]
+    return config ? config.icon : Cpu
   }
 
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
-      <header className="px-4 lg:px-6 h-14 flex items-center border-b">
+      <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
         <Link className="flex items-center justify-center" href="/">
           <Cpu className="h-6 w-6 mr-2 text-blue-600" />
           <span className="font-bold text-xl">Ibalilam</span>
@@ -128,366 +174,320 @@ export default function PartsPage() {
         </nav>
       </header>
 
-      <div className="flex-1">
-        <div className="container mx-auto px-4 py-6">
-          {/* Page Header */}
-          <div className="flex flex-col space-y-4 mb-6">
-            <h1 className="text-3xl font-bold">Browse Electronic Parts</h1>
-            <p className="text-muted-foreground">Find the perfect components for your next project</p>
+      <div className="flex-1 max-w-7xl mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Browse Marketplace</h1>
+          <p className="text-gray-600">Find the perfect item for your needs</p>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="mb-8 space-y-4">
+          {/* Search Bar */}
+          <div className="flex gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Search for items, brands, models..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+            </Button>
           </div>
 
-          {/* Error Alert */}
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+          {/* Quick Category Filters */}
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(CATEGORY_CONFIG).map(([key, config]) => {
+              const IconComponent = config.icon
+              const isSelected = selectedCategories.includes(key)
+              return (
+                <Button
+                  key={key}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleCategoryChange(key, !isSelected)}
+                  className="flex items-center gap-2"
+                >
+                  <IconComponent className="h-4 w-4" />
+                  {config.name}
+                </Button>
+              )
+            })}
+          </div>
 
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Sidebar Filters */}
-            <div className="lg:w-64 space-y-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-lg">Filters</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="text-xs"
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
+          {/* Advanced Filters */}
+          {showFilters && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Advanced Filters</span>
+                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                    Clear All
                   </Button>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h4 className="font-medium mb-3">Categories</h4>
-                    <div className="space-y-2">
-                      {categories.map((category) => (
-                        <div key={category} className="flex items-center space-x-2">
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {/* Categories */}
+                  <div className="space-y-3">
+                    <Label>Categories</Label>
+                    {Object.entries(CATEGORY_CONFIG).map(([key, config]) => {
+                      const IconComponent = config.icon
+                      return (
+                        <div key={key} className="flex items-center space-x-2">
                           <Checkbox
-                            id={category}
-                            checked={selectedCategories.includes(category)}
-                            onCheckedChange={(checked) => handleCategoryChange(category, checked as boolean)}
+                            id={`category-${key}`}
+                            checked={selectedCategories.includes(key)}
+                            onCheckedChange={(checked) => handleCategoryChange(key, checked as boolean)}
                           />
-                          <Label htmlFor={category} className="text-sm">
-                            {category}
+                          <Label htmlFor={`category-${key}`} className="flex items-center gap-2 text-sm">
+                            <IconComponent className="h-4 w-4" />
+                            {config.name}
+                          </Label>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Subcategories */}
+                  {selectedCategories.length > 0 && (
+                    <div className="space-y-3">
+                      <Label>Subcategories</Label>
+                      {availableSubcategories.map(subcategory => (
+                        <div key={subcategory} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`subcategory-${subcategory}`}
+                            checked={selectedSubcategories.includes(subcategory)}
+                            onCheckedChange={(checked) => handleSubcategoryChange(subcategory, checked as boolean)}
+                          />
+                          <Label htmlFor={`subcategory-${subcategory}`} className="text-sm capitalize">
+                            {subcategory.replace('_', ' ')}
                           </Label>
                         </div>
                       ))}
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <h4 className="font-medium mb-3">Part Type</h4>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="original" 
-                          checked={selectedPartTypes.includes('original')}
-                          onCheckedChange={(checked) => handlePartTypeChange('original', checked as boolean)}
-                        />
-                        <Label htmlFor="original" className="text-sm">
-                          Original
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="refurbished" 
-                          checked={selectedPartTypes.includes('refurbished')}
-                          onCheckedChange={(checked) => handlePartTypeChange('refurbished', checked as boolean)}
-                        />
-                        <Label htmlFor="refurbished" className="text-sm">
-                          Refurbished
-                        </Label>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="font-medium mb-3">Condition</h4>
-                    <div className="space-y-2">
-                      {conditions.map((condition) => (
-                        <div key={condition} className="flex items-center space-x-2">
+                  {/* Brands */}
+                  {availableBrands.length > 0 && (
+                    <div className="space-y-3">
+                      <Label>Brands</Label>
+                      {availableBrands.slice(0, 10).map(brand => (
+                        <div key={brand} className="flex items-center space-x-2">
                           <Checkbox
-                            id={condition}
-                            checked={selectedConditions.includes(condition)}
-                            onCheckedChange={(checked) => handleConditionChange(condition, checked as boolean)}
+                            id={`brand-${brand}`}
+                            checked={selectedBrands.includes(brand)}
+                            onCheckedChange={(checked) => handleBrandChange(brand, checked as boolean)}
                           />
-                          <Label htmlFor={condition} className="text-sm capitalize">
-                            {condition.replace('-', ' ')}
+                          <Label htmlFor={`brand-${brand}`} className="text-sm">
+                            {brand}
                           </Label>
                         </div>
                       ))}
+                      
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <h4 className="font-medium mb-3">Price Range</h4>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="under10" 
-                          checked={priceRange.min === 0 && priceRange.max === 10}
-                          onCheckedChange={(checked) => handlePriceRangeChange('under10', checked as boolean)}
+                  {/* Conditions */}
+                  <div className="space-y-3">
+                    <Label>Condition</Label>
+                    {conditions.map(condition => (
+                      <div key={condition} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`condition-${condition}`}
+                          checked={selectedConditions.includes(condition)}
+                          onCheckedChange={(checked) => handleConditionChange(condition, checked as boolean)}
                         />
-                        <Label htmlFor="under10" className="text-sm">
-                          Under $10
+                        <Label htmlFor={`condition-${condition}`} className="text-sm capitalize">
+                          {condition}
                         </Label>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="10to50" 
-                          checked={priceRange.min === 10 && priceRange.max === 50}
-                          onCheckedChange={(checked) => handlePriceRangeChange('10to50', checked as boolean)}
-                        />
-                        <Label htmlFor="10to50" className="text-sm">
-                          $10 - $50
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="50to100" 
-                          checked={priceRange.min === 50 && priceRange.max === 100}
-                          onCheckedChange={(checked) => handlePriceRangeChange('50to100', checked as boolean)}
-                        />
-                        <Label htmlFor="50to100" className="text-sm">
-                          $50 - $100
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="over100" 
-                          checked={priceRange.min === 100 && priceRange.max === null}
-                          onCheckedChange={(checked) => handlePriceRangeChange('over100', checked as boolean)}
-                        />
-                        <Label htmlFor="over100" className="text-sm">
-                          Over $100
-                        </Label>
-                      </div>
-                    </div>
+                    ))}
                   </div>
+                </div>
 
-                  <div>
-                    <h4 className="font-medium mb-3">Seller Verification</h4>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="fica-verified" 
-                          checked={ficaVerifiedOnly}
-                          onCheckedChange={(checked) => setFicaVerifiedOnly(checked as boolean)}
-                        />
-                        <Label htmlFor="fica-verified" className="text-sm">
-                          FICA Verified Sellers Only
-                        </Label>
-                      </div>
-                    </div>
+                {/* Price Range */}
+                <div className="space-y-3">
+                  <Label>Price Range (ZAR)</Label>
+                  <div className="flex gap-4 items-center">
+                    <Input
+                      type="number"
+                      placeholder="Min"
+                      value={priceRange.min || ''}
+                      onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value ? parseFloat(e.target.value) : null }))}
+                    />
+                    <span>to</span>
+                    <Input
+                      type="number"
+                      placeholder="Max"
+                      value={priceRange.max || ''}
+                      onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value ? parseFloat(e.target.value) : null }))}
+                    />
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
 
-            {/* Main Content */}
-            <div className="flex-1 space-y-4">
-              {/* Search and Controls */}
-              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                {/* Location */}
+                <div className="space-y-3">
+                  <Label>Location</Label>
                   <Input
-                    placeholder="Search parts..."
-                    value={filters.search}
-                    onChange={(e) => updateFilters({ search: e.target.value })}
-                    className="pl-8"
+                    placeholder="City or town"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
                   />
                 </div>
+
+                {/* FICA Verified Only */}
                 <div className="flex items-center space-x-2">
-                  <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="relevance">Relevance</SelectItem>
-                      <SelectItem value="price-low">Price: Low to High</SelectItem>
-                      <SelectItem value="price-high">Price: High to Low</SelectItem>
-                      <SelectItem value="rating">Highest Rated</SelectItem>
-                      <SelectItem value="newest">Newest First</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="flex border rounded-md">
-                    <Button
-                      variant={viewMode === "grid" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("grid")}
-                    >
-                      <Grid className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant={viewMode === "list" ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setViewMode("list")}
-                    >
-                      <List className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Checkbox
+                    id="fica-verified"
+                    checked={ficaVerifiedOnly}
+                    onCheckedChange={(checked) => setFicaVerifiedOnly(checked as boolean)}
+                  />
+                  <Label htmlFor="fica-verified">FICA Verified Sellers Only</Label>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
-              {/* Results Count */}
-              <p className="text-sm text-muted-foreground">
-                {loading ? 'Loading...' : `Showing ${parts.length} of ${totalCount} results`}
-              </p>
-
-              {/* Loading State */}
-              {loading && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-muted-foreground">Loading parts...</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Empty State */}
-              {!loading && parts.length === 0 && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No parts found</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Try adjusting your filters or search terms
-                    </p>
-                    <Button onClick={clearFilters} variant="outline">
-                      Clear Filters
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Parts Grid/List */}
-              {!loading && parts.length > 0 && viewMode === "grid" ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {parts.map((part) => (
-                    <Card key={part.id} className="group hover:shadow-lg transition-shadow">
-                      <CardHeader className="p-0">
-                        <div className="relative">
-                          <Image
-                            src={part.image_url || "/placeholder.svg"}
-                            alt={part.name}
-                            width={200}
-                            height={200}
-                            className="w-full h-48 object-cover rounded-t-lg"
-                          />
-                          {part.part_type === 'refurbished' && (
-                            <Badge className="absolute top-2 left-2" variant="secondary">
-                              Refurbished
-                            </Badge>
-                          )}
-                          {part.stock_quantity === 0 && (
-                            <Badge className="absolute top-2 right-2" variant="destructive">
-                              Out of Stock
-                            </Badge>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <div className="space-y-2">
-                          <h3 className="font-semibold line-clamp-1">{part.name}</h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2">{part.description}</p>
-                          <div className="flex items-center space-x-1">
-                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                            <span className="text-sm font-medium">{part.shop_rating?.toFixed(1) || 'N/A'}</span>
-                            <span className="text-sm text-muted-foreground">({part.shop_review_count || 0})</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-lg font-bold">${part.price.toFixed(2)}</span>
-                              {part.part_type === 'refurbished' && part.cost && (
-                                <span className="text-sm text-muted-foreground line-through ml-2">
-                                  ${part.cost.toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                            <Badge variant="outline">
-                              {part.part_type === 'refurbished' ? part.refurbished_condition : 'Original'}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">by {part.shop_name}</p>
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Stock: {part.stock_quantity}</span>
-                            <span>{part.views} views</span>
-                          </div>
-                          <Button className="w-full" asChild disabled={part.stock_quantity === 0}>
-                            <Link href={`/parts/${part.id}`}>
-                              <ShoppingCart className="mr-2 h-4 w-4" />
-                              {part.stock_quantity === 0 ? 'Out of Stock' : 'View Details'}
-                            </Link>
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : !loading && parts.length > 0 && (
-                <div className="space-y-4">
-                  {parts.map((part) => (
-                    <Card key={part.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-4">
-                        <div className="flex gap-4">
-                          <Image
-                            src={part.image_url || "/placeholder.svg"}
-                            alt={part.name}
-                            width={120}
-                            height={120}
-                            className="rounded-lg object-cover"
-                          />
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <h3 className="font-semibold text-lg">{part.name}</h3>
-                                <p className="text-muted-foreground">{part.description}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                {part.part_type === 'refurbished' && <Badge variant="secondary">Refurbished</Badge>}
-                                {part.stock_quantity === 0 && <Badge variant="destructive">Out of Stock</Badge>}
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                              <span className="text-sm font-medium">{part.shop_rating?.toFixed(1) || 'N/A'}</span>
-                              <span className="text-sm text-muted-foreground">({part.shop_review_count || 0} reviews)</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-4">
-                                <div>
-                                  <span className="text-xl font-bold">${part.price.toFixed(2)}</span>
-                                  {part.part_type === 'refurbished' && part.cost && (
-                                    <span className="text-sm text-muted-foreground line-through ml-2">
-                                      ${part.cost.toFixed(2)}
-                                    </span>
-                                  )}
-                                </div>
-                                <Badge variant="outline">
-                                  {part.part_type === 'refurbished' ? part.refurbished_condition : 'Original'}
-                                </Badge>
-                                <span className="text-sm text-muted-foreground">by {part.shop_name}</span>
-                                <span className="text-xs text-muted-foreground">Stock: {part.stock_quantity}</span>
-                              </div>
-                              <Button asChild disabled={part.stock_quantity === 0}>
-                                <Link href={`/parts/${part.id}`}>
-                                  {part.stock_quantity === 0 ? 'Out of Stock' : 'View Details'}
-                                </Link>
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+        {/* Results Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <p className="text-gray-600">
+              {loading ? "Loading..." : `${totalCount} items found`}
+            </p>
+            {(selectedCategories.length > 0 || selectedSubcategories.length > 0 || selectedBrands.length > 0 || selectedConditions.length > 0 || priceRange.min || priceRange.max || location || ficaVerifiedOnly) && (
+              <Button variant="outline" size="sm" onClick={clearAllFilters}>
+                <X className="h-4 w-4 mr-2" />
+                Clear Filters
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as any)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="relevance">Relevance</SelectItem>
+                <SelectItem value="price-low">Price: Low to High</SelectItem>
+                <SelectItem value="price-high">Price: High to Low</SelectItem>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="most-viewed">Most Viewed</SelectItem>
+                <SelectItem value="rating">Highest Rated</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex border rounded-lg">
+              <Button
+                variant={viewMode === "grid" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("grid")}
+              >
+                <Grid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("list")}
+              >
+                <List className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
+
+        {/* Error State */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        )}
+
+        {/* Results */}
+        {!loading && parts.length === 0 && (
+          <div className="text-center py-12">
+            <Cpu className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
+            <p className="text-gray-600 mb-4">Try adjusting your search criteria or filters</p>
+            <Button onClick={clearAllFilters}>Clear All Filters</Button>
+          </div>
+        )}
+
+        {!loading && parts.length > 0 && (
+          <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "space-y-4"}>
+            {parts.map((part) => {
+              const CategoryIcon = getCategoryIcon(part.category)
+              return (
+                <Card key={part.id} className="hover:shadow-lg transition-shadow">
+                  <Link href={`/parts/${part.id}`}>
+                    <CardContent className="p-0">
+                      <div className="relative">
+                        <Image
+                          src={part.image_url || "/placeholder.svg"}
+                          alt={part.name}
+                          width={300}
+                          height={200}
+                          className="w-full h-48 object-cover rounded-t-lg"
+                        />
+                        <Badge className="absolute top-2 left-2 bg-white text-black">
+                          <CategoryIcon className="h-3 w-3 mr-1" />
+                          {CATEGORY_CONFIG[part.category as keyof typeof CATEGORY_CONFIG]?.name || part.category}
+                        </Badge>
+                        {part.subcategory && (
+                          <Badge variant="secondary" className="absolute top-2 right-2">
+                            {part.subcategory}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <h3 className="font-semibold text-lg mb-2 line-clamp-2">{part.name}</h3>
+                        {part.brand && (
+                          <p className="text-sm text-gray-600 mb-1">{part.brand}</p>
+                        )}
+                        {part.model && (
+                          <p className="text-sm text-gray-600 mb-1">{part.model}</p>
+                        )}
+                        {part.location_city && (
+                          <p className="text-sm text-gray-500 mb-2">📍 {part.location_city}</p>
+                        )}
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xl font-bold text-green-600">{formatPrice(part.price)}</span>
+                          {part.condition_status && (
+                            <Badge variant="outline" className="capitalize">
+                              {part.condition_status}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            <span>{part.shop_rating?.toFixed(1) || 'N/A'}</span>
+                          </div>
+                          <span>{part.shop_name}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Link>
+                </Card>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

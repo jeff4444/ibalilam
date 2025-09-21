@@ -38,6 +38,7 @@ import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
 import { Shield } from "lucide-react"
+import { PartImageUpload } from "@/components/part-image-upload"
 
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -59,6 +60,7 @@ export default function DashboardPage() {
     stock_quantity: "",
     status: "active",
   })
+  const [editImages, setEditImages] = useState<string[]>([])
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { 
@@ -159,6 +161,8 @@ export default function DashboardPage() {
       stock_quantity: part.stock_quantity.toString(),
       status: part.status,
     })
+    // Set images from the part data
+    setEditImages(part.images || (part.image_url ? [part.image_url] : []))
     setIsEditModalOpen(true)
   }
 
@@ -204,6 +208,8 @@ export default function DashboardPage() {
           price: parseFloat(editForm.price),
           stock_quantity: parseInt(editForm.stock_quantity),
           status: editForm.status,
+          image_url: editImages[0] || null,
+          images: editImages.length > 0 ? editImages : null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', selectedPart.id)
@@ -489,7 +495,7 @@ export default function DashboardPage() {
                           <TableCell className="font-medium">
                             <div className="flex items-center space-x-3">
                               <Image
-                                src={part.image_url || "/placeholder.svg"}
+                                src={part.images?.[0] || part.image_url || "/placeholder.svg"}
                                 alt={part.name}
                                 width={40}
                                 height={40}
@@ -660,7 +666,7 @@ export default function DashboardPage() {
                           <TableCell className="font-medium">
                             <div className="flex items-center space-x-3">
                               <Image
-                                src={part.image_url || "/placeholder.svg"}
+                                src={part.images?.[0] || part.image_url || "/placeholder.svg"}
                                 alt={part.name}
                                 width={40}
                                 height={40}
@@ -862,13 +868,35 @@ export default function DashboardPage() {
           {selectedPart && (
             <div className="space-y-4">
               <div className="flex items-start space-x-4">
-                <Image
-                  src={selectedPart.image_url || "/placeholder.svg"}
-                  alt={selectedPart.name}
-                  width={120}
-                  height={120}
-                  className="rounded-md"
-                />
+                <div className="flex-shrink-0">
+                  <Image
+                    src={selectedPart.images?.[0] || selectedPart.image_url || "/placeholder.svg"}
+                    alt={selectedPart.name}
+                    width={120}
+                    height={120}
+                    className="rounded-md"
+                  />
+                  {/* Show additional images if available */}
+                  {selectedPart.images && selectedPart.images.length > 1 && (
+                    <div className="mt-2 flex space-x-1">
+                      {selectedPart.images.slice(1, 4).map((image: string, index: number) => (
+                        <Image
+                          key={index}
+                          src={image}
+                          alt={`${selectedPart.name} ${index + 2}`}
+                          width={30}
+                          height={30}
+                          className="rounded border"
+                        />
+                      ))}
+                      {selectedPart.images.length > 4 && (
+                        <div className="w-8 h-8 rounded border bg-gray-100 flex items-center justify-center text-xs text-gray-500">
+                          +{selectedPart.images.length - 4}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="flex-1 space-y-2">
                   <h3 className="text-xl font-semibold">{selectedPart.name}</h3>
                   <p className="text-muted-foreground">{selectedPart.description || "No description"}</p>
@@ -1019,6 +1047,17 @@ export default function DashboardPage() {
                   disabled={isLoading}
                 />
               </div>
+            </div>
+            
+            {/* Images Section */}
+            <div className="space-y-2">
+              <Label>Images</Label>
+              <PartImageUpload
+                images={editImages}
+                onImagesChange={setEditImages}
+                maxImages={8}
+                disabled={isLoading}
+              />
             </div>
             
             <div className="flex justify-end space-x-2">

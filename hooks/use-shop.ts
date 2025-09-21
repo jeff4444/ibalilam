@@ -32,6 +32,7 @@ export interface Part {
   time_spent_hours: number | null
   profit: number | null
   image_url: string | null
+  images: string[] | null
   views: number
   created_at: string
   updated_at: string

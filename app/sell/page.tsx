@@ -9,13 +9,87 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, X, Plus, Package, DollarSign, Camera, Cpu, Wrench } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Upload, X, Plus, Package, DollarSign, Camera, Cpu, Wrench, Smartphone, Laptop, Gamepad2 } from "lucide-react"
 import { CartButton } from "@/components/cart-button"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
 import { useFica } from "@/hooks/use-fica"
 import { FicaBadge } from "@/components/fica-badge"
+import { PriceTiersManager } from "@/components/price-tiers-manager"
+import { PartImageUpload } from "@/components/part-image-upload"
+
+// Category hierarchy
+const CATEGORY_HIERARCHY = {
+  mobile_phones: {
+    name: "Mobile Phones",
+    icon: Smartphone,
+    subcategories: ["smartphones", "feature_phones"],
+    fields: {
+      brand: { required: true, label: "Brand" },
+      model: { required: true, label: "Model" },
+      storage_capacity: { required: true, label: "Storage Capacity" },
+      imei: { required: true, label: "IMEI Number" },
+      network_status: { required: true, label: "Network Status" },
+      has_box: { required: false, label: "Includes Original Box" },
+      has_charger: { required: false, label: "Includes Charger" }
+    }
+  },
+  phone_parts: {
+    name: "Phone Parts",
+    icon: Wrench,
+    subcategories: ["screen", "battery", "charging_port", "camera", "speaker", "microphone", "housing", "other"],
+    fields: {
+      part_type_detail: { required: true, label: "Part Type" },
+      brand: { required: true, label: "Brand" },
+      model_compatibility: { required: true, label: "Model Compatibility (e.g., Samsung A30)" },
+      moq: { required: false, label: "Minimum Order Quantity" }
+    }
+  },
+  phone_accessories: {
+    name: "Phone Accessories",
+    icon: Package,
+    subcategories: ["charger", "case", "earphones", "screen_protector", "cable", "other"],
+    fields: {
+      accessory_type: { required: true, label: "Accessory Type" },
+      brand: { required: false, label: "Brand" }
+    }
+  },
+  laptops: {
+    name: "Laptops",
+    icon: Laptop,
+    subcategories: ["gaming", "business", "ultrabook", "workstation", "chromebook", "other"],
+    fields: {
+      brand: { required: true, label: "Brand" },
+      model: { required: true, label: "Model" },
+      cpu: { required: true, label: "CPU" },
+      ram: { required: true, label: "RAM" },
+      storage: { required: true, label: "Storage" },
+      screen_size: { required: true, label: "Screen Size" },
+      battery_health: { required: false, label: "Battery Health (%)" }
+    }
+  },
+  steam_kits: {
+    name: "STEAM Kits",
+    icon: Gamepad2,
+    subcategories: ["coding", "robotics", "ai", "electronics", "other"],
+    fields: {
+      kit_type: { required: true, label: "Kit Type" },
+      brand: { required: true, label: "Brand" },
+      age_group: { required: false, label: "Age Group" }
+    }
+  },
+  other_electronics: {
+    name: "Other Electronics",
+    icon: Cpu,
+    subcategories: ["tv", "audio", "gaming", "networking", "power", "other"],
+    fields: {
+      electronics_subcategory: { required: true, label: "Subcategory" },
+      key_specs: { required: false, label: "Key Specifications" }
+    }
+  }
+}
 
 export default function SellPage() {
   const router = useRouter()
@@ -28,24 +102,46 @@ export default function SellPage() {
     name: "",
     description: "",
     category: "",
-    condition: "",
-    manufacturer: "",
+    subcategory: "",
+    condition_status: "",
+    brand: "",
     model: "",
     price: "",
     quantity: "",
-    shipping: "",
-    part_type: "original", // original or refurbished
-    // Refurbished specific fields
-    cost: "",
-    original_condition: "",
-    refurbished_condition: "",
-    time_spent_hours: "",
+    location_city: "",
+    location_town: "",
+    // Category-specific fields
+    storage_capacity: "",
+    imei: "",
+    network_status: "",
+    has_box: false,
+    has_charger: false,
+    part_type_detail: "",
+    model_compatibility: "",
+    moq: "",
+    accessory_type: "",
+    cpu: "",
+    ram: "",
+    storage: "",
+    screen_size: "",
+    battery_health: "",
+    kit_type: "",
+    age_group: "",
+    electronics_subcategory: "",
+    key_specs: "",
+    // MOQ fields
+    moq_units: "1",
+    order_increment: "1",
+    pack_size_units: "",
+    stock_on_hand_units: "1",
+    backorder_allowed: false,
+    lead_time_days: ""
   })
   
   const [images, setImages] = useState<string[]>([])
-  const [specifications, setSpecifications] = useState([{ key: "", value: "" }])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [priceTiers, setPriceTiers] = useState<Array<{ min_qty: number; unit_price: number }>>([])
   const [success, setSuccess] = useState("")
 
   // Redirect if not authenticated
@@ -56,35 +152,44 @@ export default function SellPage() {
   }, [user, authLoading, router])
 
   // Handle input changes
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }))
   }
 
-  const addSpecification = () => {
-    setSpecifications([...specifications, { key: "", value: "" }])
+  const handleImagesChange = (newImages: string[]) => {
+    setImages(newImages)
   }
 
-  const removeSpecification = (index: number) => {
-    setSpecifications(specifications.filter((_, i) => i !== index))
-  }
+  // Get current category configuration
+  const currentCategory = formData.category ? CATEGORY_HIERARCHY[formData.category as keyof typeof CATEGORY_HIERARCHY] : null
 
-  const updateSpecification = (index: number, field: "key" | "value", value: string) => {
-    const updated = [...specifications]
-    updated[index][field] = value
-    setSpecifications(updated)
-  }
+  // Validate form based on category requirements
+  const validateForm = () => {
+    if (!currentCategory) return false
 
-  const addImage = () => {
-    // Simulate image upload
-    const newImage = `/placeholder.svg?height=200&width=200&text=Part+${images.length + 1}`
-    setImages([...images, newImage])
-  }
+    // Check required fields
+    for (const [field, config] of Object.entries(currentCategory.fields)) {
+      if (config.required && !formData[field as keyof typeof formData]) {
+        setError(`${config.label} is required`)
+        return false
+      }
+    }
 
-  const removeImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index))
+    // Special validations
+    if (formData.category === 'mobile_phones' && !formData.imei) {
+      setError("IMEI is mandatory for mobile phone listings")
+      return false
+    }
+
+    if (formData.category === 'phone_parts' && !formData.model_compatibility) {
+      setError("Model compatibility is required for phone parts listings")
+      return false
+    }
+
+    return true
   }
 
   // Form submission handler
@@ -95,12 +200,19 @@ export default function SellPage() {
     setSuccess("")
 
     try {
+      // Validate form
+      if (!validateForm()) {
+        setIsLoading(false)
+        return
+      }
+
       // Check FICA verification status
       if (!canPublishListings()) {
         setError("You must complete FICA verification to publish listings. Please complete your FICA verification in your profile.")
         setIsLoading(false)
         return
       }
+
       // Get user's shop
       const { data: shop, error: shopError } = await supabase
         .from('shops')
@@ -118,24 +230,51 @@ export default function SellPage() {
         name: formData.name,
         description: formData.description,
         category: formData.category,
+        subcategory: formData.subcategory,
+        brand: formData.brand,
+        model: formData.model,
+        condition_status: formData.condition_status,
+        part_type: formData.condition_status === 'refurbished' ? 'refurbished' : 'original',
+        location_city: formData.location_city,
+        location_town: formData.location_town,
         price: parseFloat(formData.price),
         stock_quantity: parseInt(formData.quantity),
         status: 'active',
-        part_type: formData.part_type,
         image_url: images[0] || null,
+        images: images.length > 0 ? images : null,
         search_keywords: [
           formData.name,
           formData.category,
-          formData.manufacturer,
+          formData.subcategory,
+          formData.brand,
           formData.model
-        ].filter(Boolean), // Remove empty strings
-        // Refurbished specific fields
-        ...(formData.part_type === 'refurbished' && {
-          cost: formData.cost ? parseFloat(formData.cost) : null,
-          original_condition: formData.original_condition || null,
-          refurbished_condition: formData.refurbished_condition || null,
-          time_spent_hours: formData.time_spent_hours ? parseFloat(formData.time_spent_hours) : null,
-        })
+        ].filter(Boolean),
+        // Category-specific fields
+        storage_capacity: formData.storage_capacity || null,
+        imei: formData.imei || null,
+        network_status: formData.network_status || null,
+        has_box: formData.has_box,
+        has_charger: formData.has_charger,
+        part_type_detail: formData.part_type_detail || null,
+        model_compatibility: formData.model_compatibility || null,
+        moq: formData.moq ? parseInt(formData.moq) : null,
+        accessory_type: formData.accessory_type || null,
+        cpu: formData.cpu || null,
+        ram: formData.ram || null,
+        storage: formData.storage || null,
+        screen_size: formData.screen_size || null,
+        battery_health: formData.battery_health ? parseInt(formData.battery_health) : null,
+        kit_type: formData.kit_type || null,
+        age_group: formData.age_group || null,
+        electronics_subcategory: formData.electronics_subcategory || null,
+        key_specs: formData.key_specs || null,
+        // MOQ fields
+        moq_units: formData.moq_units ? parseInt(formData.moq_units) : 1,
+        order_increment: formData.order_increment ? parseInt(formData.order_increment) : 1,
+        pack_size_units: formData.pack_size_units ? parseInt(formData.pack_size_units) : null,
+        stock_on_hand_units: formData.stock_on_hand_units ? parseInt(formData.stock_on_hand_units) : 0,
+        backorder_allowed: formData.backorder_allowed,
+        lead_time_days: formData.lead_time_days ? parseInt(formData.lead_time_days) : null
       }
 
       // Insert part into database
@@ -149,6 +288,24 @@ export default function SellPage() {
         throw new Error(`Failed to create part: ${insertError.message}`)
       }
 
+      // Insert price tiers if any exist
+      if (priceTiers.length > 0 && newPart) {
+        const tierData = priceTiers.map(tier => ({
+          part_id: newPart.id,
+          min_qty: tier.min_qty,
+          unit_price: tier.unit_price
+        }))
+
+        const { error: tierError } = await supabase
+          .from('price_tiers')
+          .insert(tierData)
+
+        if (tierError) {
+          console.error('Error inserting price tiers:', tierError)
+          // Don't throw error here - part was created successfully
+        }
+      }
+
       setSuccess('Part successfully added to your shop!')
       
       // Reset form
@@ -156,20 +313,42 @@ export default function SellPage() {
         name: "",
         description: "",
         category: "",
-        condition: "",
-        manufacturer: "",
+        subcategory: "",
+        condition_status: "",
+        brand: "",
         model: "",
         price: "",
         quantity: "",
-        shipping: "",
-        part_type: "original",
-        cost: "",
-        original_condition: "",
-        refurbished_condition: "",
-        time_spent_hours: "",
+        location_city: "",
+        location_town: "",
+        storage_capacity: "",
+        imei: "",
+        network_status: "",
+        has_box: false,
+        has_charger: false,
+        part_type_detail: "",
+        model_compatibility: "",
+        moq: "",
+        accessory_type: "",
+        cpu: "",
+        ram: "",
+        storage: "",
+        screen_size: "",
+        battery_health: "",
+        kit_type: "",
+        age_group: "",
+        electronics_subcategory: "",
+        key_specs: "",
+        // MOQ fields
+        moq_units: "1",
+        order_increment: "1",
+        pack_size_units: "",
+        stock_on_hand_units: "1",
+        backorder_allowed: false,
+        lead_time_days: ""
       })
       setImages([])
-      setSpecifications([{ key: "", value: "" }])
+      setPriceTiers([])
 
       // Redirect to dashboard after a short delay
       setTimeout(() => {
@@ -210,7 +389,7 @@ export default function SellPage() {
       <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
         <Link className="flex items-center justify-center" href="/">
           <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Techafon</span>
+          <span className="font-bold text-xl">Ibalilam</span>
         </Link>
         <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
@@ -231,8 +410,8 @@ export default function SellPage() {
 
       <div className="flex-1 max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">List a New Part</h1>
-          <p className="text-gray-600">Add your electronic component to the marketplace</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">List a New Item</h1>
+          <p className="text-gray-600">Add your item to the marketplace</p>
         </div>
 
         {/* Error and Success Messages */}
@@ -285,50 +464,66 @@ export default function SellPage() {
         </Card>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Part Type Selection */}
+          {/* Category Selection */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Wrench className="h-5 w-5" />
-                Part Type
+                <Package className="h-5 w-5" />
+                Category Selection
               </CardTitle>
-              <CardDescription>Choose whether this is an original or refurbished part</CardDescription>
+              <CardDescription>Choose the category that best fits your item</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div 
-                  className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                    formData.part_type === 'original' 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => handleInputChange('part_type', 'original')}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Package className="h-6 w-6 text-blue-600" />
-                    <div>
-                      <h3 className="font-medium">Original Part</h3>
-                      <p className="text-sm text-gray-600">New or used part in original condition</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                {Object.entries(CATEGORY_HIERARCHY).map(([key, category]) => {
+                  const IconComponent = category.icon
+                  return (
+                    <div 
+                      key={key}
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                        formData.category === key 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => handleInputChange('category', key)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <IconComponent className="h-6 w-6 text-blue-600" />
+                        <div>
+                          <h3 className="font-medium">{category.name}</h3>
+                          <p className="text-sm text-gray-600">
+                            {category.subcategories.slice(0, 2).join(', ')}
+                            {category.subcategories.length > 2 && '...'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div 
-                  className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                    formData.part_type === 'refurbished' 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => handleInputChange('part_type', 'refurbished')}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Wrench className="h-6 w-6 text-green-600" />
-                    <div>
-                      <h3 className="font-medium">Refurbished Part</h3>
-                      <p className="text-sm text-gray-600">Part that has been restored or repaired</p>
-                    </div>
-                  </div>
-                </div>
+                  )
+                })}
               </div>
+
+              {/* Subcategory Selection */}
+              {currentCategory && (
+                <div className="space-y-2">
+                  <Label htmlFor="subcategory">Subcategory *</Label>
+                  <Select 
+                    value={formData.subcategory}
+                    onValueChange={(value) => handleInputChange('subcategory', value)}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select subcategory" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentCategory.subcategories.map(subcat => (
+                        <SelectItem key={subcat} value={subcat}>
+                          {subcat.charAt(0).toUpperCase() + subcat.slice(1).replace('_', ' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -339,41 +534,34 @@ export default function SellPage() {
                 <Package className="h-5 w-5" />
                 Basic Information
               </CardTitle>
-              <CardDescription>Provide the essential details about your part</CardDescription>
+              <CardDescription>Provide the essential details about your item</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Part Name *</Label>
+                  <Label htmlFor="name">Item Title *</Label>
                   <Input 
                     id="name" 
-                    placeholder="e.g., Arduino Uno R3" 
+                    placeholder="e.g., iPhone 13 Pro 256GB" 
                     value={formData.name}
                     onChange={(e) => handleInputChange('name', e.target.value)}
                     required 
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="category">Category *</Label>
+                  <Label htmlFor="condition_status">Condition *</Label>
                   <Select 
-                    value={formData.category}
-                    onValueChange={(value) => handleInputChange('category', value)}
+                    value={formData.condition_status}
+                    onValueChange={(value) => handleInputChange('condition_status', value)}
                     required
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
+                      <SelectValue placeholder="Select condition" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="microcontrollers">Microcontrollers</SelectItem>
-                      <SelectItem value="sensors">Sensors</SelectItem>
-                      <SelectItem value="resistors">Resistors</SelectItem>
-                      <SelectItem value="capacitors">Capacitors</SelectItem>
-                      <SelectItem value="transistors">Transistors</SelectItem>
-                      <SelectItem value="ics">Integrated Circuits</SelectItem>
-                      <SelectItem value="connectors">Connectors</SelectItem>
-                      <SelectItem value="displays">Displays</SelectItem>
-                      <SelectItem value="power">Power Supplies</SelectItem>
-                      <SelectItem value="tools">Tools</SelectItem>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="refurbished">Refurbished</SelectItem>
+                      <SelectItem value="used">Used</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -383,7 +571,7 @@ export default function SellPage() {
                 <Label htmlFor="description">Description *</Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe the part, its condition, and any relevant details..."
+                  placeholder="Describe the item, its condition, and any relevant details..."
                   className="min-h-[120px]"
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
@@ -393,45 +581,158 @@ export default function SellPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="condition">Condition *</Label>
-                  <Select 
-                    value={formData.condition}
-                    onValueChange={(value) => handleInputChange('condition', value)}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select condition" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="new">New</SelectItem>
-                      <SelectItem value="like-new">Like New</SelectItem>
-                      <SelectItem value="good">Good</SelectItem>
-                      <SelectItem value="fair">Fair</SelectItem>
-                      <SelectItem value="for-parts">For Parts/Repair</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="manufacturer">Manufacturer</Label>
+                  <Label htmlFor="brand">Brand</Label>
                   <Input 
-                    id="manufacturer" 
-                    placeholder="e.g., Arduino, Texas Instruments"
-                    value={formData.manufacturer}
-                    onChange={(e) => handleInputChange('manufacturer', e.target.value)}
+                    id="brand" 
+                    placeholder="e.g., Apple, Samsung"
+                    value={formData.brand}
+                    onChange={(e) => handleInputChange('brand', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="model">Model Number</Label>
+                  <Label htmlFor="model">Model</Label>
                   <Input 
                     id="model" 
-                    placeholder="e.g., ATmega328P"
+                    placeholder="e.g., iPhone 13 Pro"
                     value={formData.model}
                     onChange={(e) => handleInputChange('model', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location_city">City/Town</Label>
+                  <Input 
+                    id="location_city" 
+                    placeholder="e.g., Cape Town"
+                    value={formData.location_city}
+                    onChange={(e) => handleInputChange('location_city', e.target.value)}
                   />
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Category-Specific Fields */}
+          {currentCategory && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <currentCategory.icon className="h-5 w-5" />
+                  {currentCategory.name} Details
+                </CardTitle>
+                <CardDescription>Provide specific details for this category</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {Object.entries(currentCategory.fields).map(([field, config]) => {
+                  const fieldValue = formData[field as keyof typeof formData]
+                  
+                  if (field === 'has_box' || field === 'has_charger') {
+                    return (
+                      <div key={field} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={field}
+                          checked={fieldValue as boolean}
+                          onCheckedChange={(checked) => handleInputChange(field, checked as boolean)}
+                        />
+                        <Label htmlFor={field}>{config.label}</Label>
+                      </div>
+                    )
+                  }
+
+                  if (field === 'part_type_detail' || field === 'accessory_type' || field === 'kit_type' || field === 'electronics_subcategory') {
+                    const options = field === 'part_type_detail' 
+                      ? ['screen', 'battery', 'charging_port', 'camera', 'speaker', 'microphone', 'housing', 'other']
+                      : field === 'accessory_type'
+                      ? ['charger', 'case', 'earphones', 'screen_protector', 'cable', 'other']
+                      : field === 'kit_type'
+                      ? ['coding', 'robotics', 'ai', 'electronics', 'other']
+                      : ['tv', 'audio', 'gaming', 'networking', 'power', 'other']
+
+                    return (
+                      <div key={field} className="space-y-2">
+                        <Label htmlFor={field}>{config.label} {config.required && '*'}</Label>
+                        <Select 
+                          value={fieldValue as string}
+                          onValueChange={(value) => handleInputChange(field, value)}
+                          required={config.required}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={`Select ${config.label.toLowerCase()}`} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {options.map(option => (
+                              <SelectItem key={option} value={option}>
+                                {option.charAt(0).toUpperCase() + option.slice(1).replace('_', ' ')}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )
+                  }
+
+                  if (field === 'network_status') {
+                    return (
+                      <div key={field} className="space-y-2">
+                        <Label htmlFor={field}>{config.label} {config.required && '*'}</Label>
+                        <Select 
+                          value={fieldValue as string}
+                          onValueChange={(value) => handleInputChange(field, value)}
+                          required={config.required}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select network status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unlocked">Unlocked</SelectItem>
+                            <SelectItem value="locked">Locked</SelectItem>
+                            <SelectItem value="unknown">Unknown</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )
+                  }
+
+                  if (field === 'age_group') {
+                    return (
+                      <div key={field} className="space-y-2">
+                        <Label htmlFor={field}>{config.label} {config.required && '*'}</Label>
+                        <Select 
+                          value={fieldValue as string}
+                          onValueChange={(value) => handleInputChange(field, value)}
+                          required={config.required}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select age group" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="5-8">5-8 years</SelectItem>
+                            <SelectItem value="9-12">9-12 years</SelectItem>
+                            <SelectItem value="13-16">13-16 years</SelectItem>
+                            <SelectItem value="17+">17+ years</SelectItem>
+                            <SelectItem value="all">All ages</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={field} className="space-y-2">
+                      <Label htmlFor={field}>{config.label} {config.required && '*'}</Label>
+                      <Input 
+                        id={field} 
+                        placeholder={config.label}
+                        value={fieldValue as string}
+                        onChange={(e) => handleInputChange(field, e.target.value)}
+                        required={config.required}
+                        type={field === 'battery_health' || field === 'moq' ? 'number' : 'text'}
+                      />
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Pricing */}
           <Card>
@@ -443,9 +744,9 @@ export default function SellPage() {
               <CardDescription>Set your price and available quantity</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Price (USD) *</Label>
+                  <Label htmlFor="price">Price (ZAR) *</Label>
                   <Input 
                     id="price" 
                     type="number" 
@@ -468,189 +769,126 @@ export default function SellPage() {
                     required 
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="shipping">Shipping Cost (USD)</Label>
-                  <Input 
-                    id="shipping" 
-                    type="number" 
-                    step="0.01" 
-                    placeholder="0.00"
-                    value={formData.shipping}
-                    onChange={(e) => handleInputChange('shipping', e.target.value)}
-                  />
-                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Refurbished Specific Fields */}
-          {formData.part_type === 'refurbished' && (
+          {/* MOQ Settings for Phone Parts and Accessories */}
+          {(formData.category === 'phone_parts' || formData.category === 'phone_accessories') && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Wrench className="h-5 w-5" />
-                  Refurbishment Details
+                  <Package className="h-5 w-5" />
+                  Order Quantity Settings
                 </CardTitle>
-                <CardDescription>Provide details about the refurbishment process</CardDescription>
+                <CardDescription>Configure minimum order quantities and pricing rules</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="cost">Refurbishment Cost (USD) *</Label>
+                    <Label htmlFor="moq_units">Minimum Order Quantity (MOQ) *</Label>
                     <Input 
-                      id="cost" 
+                      id="moq_units" 
                       type="number" 
-                      step="0.01" 
-                      placeholder="0.00"
-                      value={formData.cost}
-                      onChange={(e) => handleInputChange('cost', e.target.value)}
+                      min="1" 
+                      placeholder="1" 
+                      value={formData.moq_units}
+                      onChange={(e) => handleInputChange('moq_units', e.target.value)}
                       required 
                     />
+                    <p className="text-sm text-gray-500">Minimum quantity customers must order</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="time_spent_hours">Time Spent (Hours)</Label>
+                    <Label htmlFor="order_increment">Order Increment *</Label>
                     <Input 
-                      id="time_spent_hours" 
+                      id="order_increment" 
                       type="number" 
-                      step="0.5" 
-                      placeholder="0"
-                      value={formData.time_spent_hours}
-                      onChange={(e) => handleInputChange('time_spent_hours', e.target.value)}
+                      min="1" 
+                      placeholder="1" 
+                      value={formData.order_increment}
+                      onChange={(e) => handleInputChange('order_increment', e.target.value)}
+                      required 
                     />
+                    <p className="text-sm text-gray-500">Quantity must be in multiples of this number</p>
                   </div>
                 </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="original_condition">Original Condition *</Label>
-                    <Select 
-                      value={formData.original_condition}
-                      onValueChange={(value) => handleInputChange('original_condition', value)}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select original condition" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="broken">Broken</SelectItem>
-                        <SelectItem value="damaged">Damaged</SelectItem>
-                        <SelectItem value="fair">Fair</SelectItem>
-                        <SelectItem value="good">Good</SelectItem>
-                        <SelectItem value="excellent">Excellent</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="pack_size_units">Pack Size (Optional)</Label>
+                    <Input 
+                      id="pack_size_units" 
+                      type="number" 
+                      min="1" 
+                      placeholder="Leave empty for no pack size"
+                      value={formData.pack_size_units}
+                      onChange={(e) => handleInputChange('pack_size_units', e.target.value)}
+                    />
+                    <p className="text-sm text-gray-500">If set, orders must be in packs of this size (overrides increment)</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="refurbished_condition">Refurbished Condition *</Label>
-                    <Select 
-                      value={formData.refurbished_condition}
-                      onValueChange={(value) => handleInputChange('refurbished_condition', value)}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select refurbished condition" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="good">Good</SelectItem>
-                        <SelectItem value="very-good">Very Good</SelectItem>
-                        <SelectItem value="excellent">Excellent</SelectItem>
-                        <SelectItem value="like-new">Like New</SelectItem>
-                        <SelectItem value="new">New</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="stock_on_hand_units">Stock on Hand *</Label>
+                    <Input 
+                      id="stock_on_hand_units" 
+                      type="number" 
+                      min="0" 
+                      placeholder="0" 
+                      value={formData.stock_on_hand_units}
+                      onChange={(e) => handleInputChange('stock_on_hand_units', e.target.value)}
+                      required 
+                    />
+                    <p className="text-sm text-gray-500">Current inventory available for immediate shipment</p>
                   </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="backorder_allowed"
+                      checked={formData.backorder_allowed}
+                      onCheckedChange={(checked) => handleInputChange('backorder_allowed', checked as boolean)}
+                    />
+                    <Label htmlFor="backorder_allowed">Allow Backorders</Label>
+                  </div>
+                  <p className="text-sm text-gray-500">Allow customers to order more than current stock</p>
+                  
+                  {formData.backorder_allowed && (
+                    <div className="space-y-2">
+                      <Label htmlFor="lead_time_days">Lead Time (Days) *</Label>
+                      <Input 
+                        id="lead_time_days" 
+                        type="number" 
+                        min="1" 
+                        placeholder="7" 
+                        value={formData.lead_time_days}
+                        onChange={(e) => handleInputChange('lead_time_days', e.target.value)}
+                        required={formData.backorder_allowed}
+                      />
+                      <p className="text-sm text-gray-500">How many days to fulfill backordered items</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Images */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Camera className="h-5 w-5" />
-                Images
-              </CardTitle>
-              <CardDescription>Add photos of your part (up to 5 images)</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-                {images.map((image, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={image || "/placeholder.svg"}
-                      alt={`Part image ${index + 1}`}
-                      className="w-full h-32 object-cover rounded-lg border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(index)}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-                {images.length < 5 && (
-                  <button
-                    type="button"
-                    onClick={addImage}
-                    className="h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-blue-500 hover:text-blue-500 transition-colors"
-                  >
-                    <Upload className="h-6 w-6 mb-2" />
-                    <span className="text-sm">Add Image</span>
-                  </button>
-                )}
-              </div>
-              <p className="text-sm text-gray-500">
-                Upload clear photos showing the part from different angles. First image will be the main photo.
-              </p>
-            </CardContent>
-          </Card>
+          {/* Price Tiers for Phone Parts and Accessories */}
+          {(formData.category === 'phone_parts' || formData.category === 'phone_accessories') && (
+            <PriceTiersManager
+              tiers={priceTiers}
+              moqUnits={parseInt(formData.moq_units) || 1}
+              basePrice={parseFloat(formData.price) || 0}
+              onChange={setPriceTiers}
+            />
+          )}
 
-          {/* Technical Specifications */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Technical Specifications</CardTitle>
-              <CardDescription>Add technical details and specifications (optional)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {specifications.map((spec, index) => (
-                <div key={index} className="flex gap-4 items-end">
-                  <div className="flex-1 space-y-2">
-                    <Label htmlFor={`spec-key-${index}`}>Specification</Label>
-                    <Input
-                      id={`spec-key-${index}`}
-                      placeholder="e.g., Operating Voltage"
-                      value={spec.key}
-                      onChange={(e) => updateSpecification(index, "key", e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <Label htmlFor={`spec-value-${index}`}>Value</Label>
-                    <Input
-                      id={`spec-value-${index}`}
-                      placeholder="e.g., 5V DC"
-                      value={spec.value}
-                      onChange={(e) => updateSpecification(index, "value", e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => removeSpecification(index)}
-                    disabled={specifications.length === 1}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-              <Button type="button" variant="outline" onClick={addSpecification} className="w-full">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Specification
-              </Button>
-            </CardContent>
-          </Card>
+          {/* Images */}
+          <PartImageUpload
+            images={images}
+            onImagesChange={handleImagesChange}
+            maxImages={8}
+            disabled={isLoading}
+          />
 
           {/* Submit */}
           <div className="flex gap-4">
@@ -662,10 +900,10 @@ export default function SellPage() {
               {isLoading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Adding Part...
+                  Adding Item...
                 </>
               ) : (
-                'List Part for Sale'
+                'List Item for Sale'
               )}
             </Button>
             <Button 
