@@ -400,6 +400,12 @@ export default function PartDetailPage() {
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
             Browse Parts
           </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
+            Favorites
+          </Link>
+          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
+            Messages
+          </Link>
           <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
             Dashboard
           </Link>
@@ -551,11 +557,16 @@ export default function PartDetailPage() {
                         {part.shop_total_sales || 0} sales • {part.shop_active_listings || 0} active listings
                       </p>
                     </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/contact/${part.shop_id}`}>
-                        <MessageCircle className="h-4 w-4 mr-2" />
-                        Contact
-                      </Link>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        // Navigate to messages page with this part's chat
+                        window.location.href = `/messages?part=${part.id}`
+                      }}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Message Seller
                     </Button>
                   </div>
                 </CardContent>

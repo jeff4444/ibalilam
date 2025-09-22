@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
+import { NotificationPreferences } from "@/components/notification-preferences"
 import { FicaUpload } from "@/components/fica-upload"
 import { FicaBadge } from "@/components/fica-badge"
 import { useFica } from "@/hooks/use-fica"
@@ -526,10 +527,11 @@ export default function ProfilePage() {
           {/* Main Content */}
           <div className="md:col-span-2 space-y-6">
             <Tabs defaultValue="about" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="about">About</TabsTrigger>
                 <TabsTrigger value="shop">Shop Info</TabsTrigger>
                 <TabsTrigger value="fica">FICA Verification</TabsTrigger>
+                <TabsTrigger value="notifications">Notifications</TabsTrigger>
               </TabsList>
 
               <TabsContent value="about" className="space-y-4">
@@ -797,6 +799,10 @@ export default function ProfilePage() {
                     <FicaUpload />
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="notifications" className="space-y-4">
+                <NotificationPreferences />
               </TabsContent>
 
             </Tabs>
