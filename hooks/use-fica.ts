@@ -55,10 +55,53 @@ export function useFica() {
         .maybeSingle()
 
       if (profileError) {
-        console.error('Profile error:', profileError)
-        // Don't throw, just use defaults
+        console.error('Profile error:', {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint
+        })
+        // If profile doesn't exist, create a default one
+        if (profileError.code === 'PGRST116') {
+          // Profile doesn't exist, create it
+          const { error: createError } = await supabase
+            .from('user_profiles')
+            .insert({
+              user_id: currentUser.id,
+              user_role: 'visitor',
+              fica_status: null
+            })
+          
+          if (createError) {
+            console.error('Error creating profile:', createError)
+          } else {
+            // Retry fetching the profile after creation
+            const { data: newProfile, error: retryError } = await supabase
+              .from('user_profiles')
+              .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role')
+              .eq('user_id', currentUser.id)
+              .single()
+            
+            if (!retryError && newProfile) {
+              setFicaStatus(newProfile)
+              // Continue with document fetching
+              const { data: docs, error: docsError } = await supabase
+                .from('fica_documents')
+                .select('*')
+                .eq('user_id', currentUser.id)
+                .order('uploaded_at', { ascending: false })
+              
+              if (!docsError) {
+                setDocuments(docs || [])
+              }
+              return
+            }
+          }
+        }
+        
+        // Use defaults
         setFicaStatus({
-          fica_status: undefined,
+          fica_status: null,
           fica_rejection_reason: '',
           fica_verified_at: undefined,
           fica_reviewed_at: undefined,
@@ -87,8 +130,8 @@ export function useFica() {
       setFicaStatus(profile || {
         fica_status: null,
         fica_rejection_reason: '',
-        fica_verified_at: null,
-        fica_reviewed_at: null,
+        fica_verified_at: undefined,
+        fica_reviewed_at: undefined,
         user_role: 'visitor'
       })
       setDocuments(docs || [])

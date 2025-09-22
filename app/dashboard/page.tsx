@@ -36,9 +36,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CartButton } from "@/components/cart-button"
 import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
+import { useFica } from "@/hooks/use-fica"
+import { usePartInteractions } from "@/hooks/use-part-interactions"
 import { createClient } from "@/utils/supabase/client"
-import { Shield } from "lucide-react"
+import { Shield, MessageCircle, Heart, Upload, FileText } from "lucide-react"
 import { PartImageUpload } from "@/components/part-image-upload"
+import { FicaUpload } from "@/components/fica-upload"
 
 export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -61,6 +64,9 @@ export default function DashboardPage() {
     status: "active",
   })
   const [editImages, setEditImages] = useState<string[]>([])
+  const [partInteractions, setPartInteractions] = useState<Record<string, any>>({})
+  const [sellerChats, setSellerChats] = useState<any[]>([])
+  const [showFicaModal, setShowFicaModal] = useState(false)
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { 
@@ -73,6 +79,8 @@ export default function DashboardPage() {
     error, 
     refreshData 
   } = useShop()
+  const { ficaStatus, documents, loading: ficaLoading } = useFica()
+  const { getMultiplePartInteractions, getSellerChats } = usePartInteractions()
   const supabase = createClient()
 
   // Redirect if not logged in
@@ -103,6 +111,33 @@ export default function DashboardPage() {
 
     checkAdminStatus()
   }, [user?.id, supabase])
+
+  // Fetch part interactions and chats
+  useEffect(() => {
+    const fetchInteractionsData = async () => {
+      if (!user?.id) return
+
+      try {
+        // Get all part IDs
+        const allParts = [...originalParts, ...refurbishedParts]
+        const partIds = allParts.map(part => part.id)
+
+        if (partIds.length > 0) {
+          // Fetch interactions for all parts
+          const interactions = await getMultiplePartInteractions(partIds)
+          setPartInteractions(interactions)
+
+          // Fetch seller chats
+          const chats = await getSellerChats()
+          setSellerChats(chats)
+        }
+      } catch (error) {
+        console.error('Error fetching interactions data:', error)
+      }
+    }
+
+    fetchInteractionsData()
+  }, [user?.id, originalParts, refurbishedParts, getMultiplePartInteractions, getSellerChats])
 
   // Filter parts based on search and filter criteria
   const filteredOriginalParts = useMemo(() => {
@@ -316,7 +351,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
@@ -376,6 +411,29 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
+
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setShowFicaModal(true)}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">FICA Status</CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <Badge variant={
+                  ficaStatus?.fica_status === 'verified' ? 'default' :
+                  ficaStatus?.fica_status === 'pending' ? 'secondary' :
+                  ficaStatus?.fica_status === 'rejected' ? 'destructive' : 'outline'
+                }>
+                  {ficaStatus?.fica_status === 'verified' ? 'Verified' :
+                   ficaStatus?.fica_status === 'pending' ? 'Pending' :
+                   ficaStatus?.fica_status === 'rejected' ? 'Rejected' : 'Not Started'}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {documents.length}/3 documents uploaded
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Main Content Tabs */}
@@ -383,6 +441,7 @@ export default function DashboardPage() {
           <TabsList>
             <TabsTrigger value="original">Original Parts</TabsTrigger>
             <TabsTrigger value="refurbished">Refurbished Parts</TabsTrigger>
+            <TabsTrigger value="interactions">Interactions</TabsTrigger>
             <TabsTrigger value="shop">Shop Management</TabsTrigger>
           </TabsList>
 
@@ -476,13 +535,16 @@ export default function DashboardPage() {
                       <TableHead>Stock</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Views</TableHead>
+                      <TableHead>Saves</TableHead>
+                      <TableHead>Chats</TableHead>
+                      <TableHead>MOQ</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredOriginalParts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                           {originalParts.length === 0 
                             ? <>No original parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first part</Link></>
                             : "No parts match your current filters. Try adjusting your search criteria."
@@ -520,6 +582,26 @@ export default function DashboardPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>{part.views}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <Heart className="h-4 w-4 text-red-500" />
+                              <span>{partInteractions[part.id]?.saves || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <MessageCircle className="h-4 w-4 text-blue-500" />
+                              <span>{partInteractions[part.id]?.chats || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {part.moq_units || part.moq || 1}
+                            {part.pack_size_units && (
+                              <div className="text-xs text-muted-foreground">
+                                Pack: {part.pack_size_units}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -647,13 +729,17 @@ export default function DashboardPage() {
                       <TableHead>Profit</TableHead>
                       <TableHead>Time Spent</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Views</TableHead>
+                      <TableHead>Saves</TableHead>
+                      <TableHead>Chats</TableHead>
+                      <TableHead>MOQ</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredRefurbishedParts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
                           {refurbishedParts.length === 0 
                             ? <>No refurbished parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first refurbished part</Link></>
                             : "No parts match your current filters. Try adjusting your search criteria."
@@ -698,6 +784,27 @@ export default function DashboardPage() {
                                part.status === "draft" ? "Draft" : "Inactive"}
                             </Badge>
                           </TableCell>
+                          <TableCell>{part.views}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <Heart className="h-4 w-4 text-red-500" />
+                              <span>{partInteractions[part.id]?.saves || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <MessageCircle className="h-4 w-4 text-blue-500" />
+                              <span>{partInteractions[part.id]?.chats || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {part.moq_units || part.moq || 1}
+                            {part.pack_size_units && (
+                              <div className="text-xs text-muted-foreground">
+                                Pack: {part.pack_size_units}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -727,6 +834,150 @@ export default function DashboardPage() {
                         </TableRow>
                       ))
                     )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Interactions Tab */}
+          <TabsContent value="interactions" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    Recent Chats
+                  </CardTitle>
+                  <CardDescription>Customer inquiries about your parts</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {sellerChats.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No chats yet. Customers will appear here when they message you about your parts.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {sellerChats.slice(0, 5).map((chat) => (
+                        <div key={chat.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex-1">
+                            <div className="font-medium">{chat.partName}</div>
+                            <div className="text-sm text-muted-foreground">
+                              From: {chat.buyerName}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(chat.lastMessageAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <Button size="sm" variant="outline">
+                            View Chat
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Heart className="mr-2 h-5 w-5" />
+                    Most Saved Parts
+                  </CardTitle>
+                  <CardDescription>Your parts that customers have saved</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {Object.keys(partInteractions).length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No saves yet. Track which parts customers are interested in.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {Object.entries(partInteractions)
+                        .filter(([_, interactions]) => interactions.saves > 0)
+                        .sort(([_, a], [__, b]) => b.saves - a.saves)
+                        .slice(0, 5)
+                        .map(([partId, interactions]) => {
+                          const part = [...originalParts, ...refurbishedParts].find(p => p.id === partId)
+                          if (!part) return null
+                          
+                          return (
+                            <div key={partId} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex-1">
+                                <div className="font-medium">{part.name}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {interactions.saves} saves • {interactions.views} views
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Heart className="h-4 w-4 text-red-500" />
+                                <span className="font-medium">{interactions.saves}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Eye className="mr-2 h-5 w-5" />
+                  Part Performance Overview
+                </CardTitle>
+                <CardDescription>Views, saves, and chats across all your parts</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Part Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Views</TableHead>
+                      <TableHead>Saves</TableHead>
+                      <TableHead>Chats</TableHead>
+                      <TableHead>Recent Views (7d)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[...originalParts, ...refurbishedParts]
+                      .sort((a, b) => (partInteractions[b.id]?.views || 0) - (partInteractions[a.id]?.views || 0))
+                      .slice(0, 10)
+                      .map((part) => (
+                        <TableRow key={part.id}>
+                          <TableCell className="font-medium">{part.name}</TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              part.status === "active" ? "default" : 
+                              part.status === "out_of_stock" ? "destructive" : 
+                              "secondary"
+                            }>
+                              {part.status === "active" ? "Active" : 
+                               part.status === "out_of_stock" ? "Out of Stock" :
+                               part.status === "draft" ? "Draft" :
+                               part.status === "inactive" ? "Inactive" : "Sold"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{partInteractions[part.id]?.views || 0}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <Heart className="h-4 w-4 text-red-500" />
+                              <span>{partInteractions[part.id]?.saves || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <MessageCircle className="h-4 w-4 text-blue-500" />
+                              <span>{partInteractions[part.id]?.chats || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{partInteractions[part.id]?.recentViews || 0}</TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -1088,6 +1339,47 @@ export default function DashboardPage() {
             <Button variant="destructive" onClick={confirmDelete} disabled={isLoading}>
               {isLoading ? "Deleting..." : "Delete"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* FICA Status Modal */}
+      <Dialog open={showFicaModal} onOpenChange={setShowFicaModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>FICA Verification Status</DialogTitle>
+            <DialogDescription>
+              Manage your FICA document verification for selling on the platform
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <h3 className="font-medium">Current Status</h3>
+                <p className="text-sm text-muted-foreground">
+                  {ficaStatus?.fica_status === 'verified' ? 'Your FICA documents have been verified' :
+                   ficaStatus?.fica_status === 'pending' ? 'Your FICA documents are under review' :
+                   ficaStatus?.fica_status === 'rejected' ? 'Your FICA documents were rejected' :
+                   'FICA verification not started'}
+                </p>
+                {ficaStatus?.fica_rejection_reason && (
+                  <p className="text-sm text-red-600 mt-1">
+                    Reason: {ficaStatus.fica_rejection_reason}
+                  </p>
+                )}
+              </div>
+              <Badge variant={
+                ficaStatus?.fica_status === 'verified' ? 'default' :
+                ficaStatus?.fica_status === 'pending' ? 'secondary' :
+                ficaStatus?.fica_status === 'rejected' ? 'destructive' : 'outline'
+              }>
+                {ficaStatus?.fica_status === 'verified' ? 'Verified' :
+                 ficaStatus?.fica_status === 'pending' ? 'Pending' :
+                 ficaStatus?.fica_status === 'rejected' ? 'Rejected' : 'Not Started'}
+              </Badge>
+            </div>
+
+            <FicaUpload />
           </div>
         </DialogContent>
       </Dialog>

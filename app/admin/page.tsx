@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/utils/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { Users, FileText, CheckCircle, Clock, XCircle, AlertCircle, Home } from 'lucide-react'
+import { Users, FileText, CheckCircle, Clock, XCircle, AlertCircle, Home, Package, CreditCard, Settings } from 'lucide-react'
 import Link from 'next/link'
 
 interface AdminStats {
@@ -197,7 +197,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -226,6 +226,106 @@ export default function AdminDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              User Management
+            </CardTitle>
+            <CardDescription>
+              Manage users, roles, and account status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Total Users</span>
+                <Badge variant="outline">{stats.totalUsers}</Badge>
+              </div>
+              <Link href="/admin/users">
+                <Button className="w-full">
+                  Manage Users
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Listing Management
+            </CardTitle>
+            <CardDescription>
+              Moderate listings and review flags
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Total Listings</span>
+                <Badge variant="outline">{stats.totalListings}</Badge>
+              </div>
+              <Link href="/admin/listings">
+                <Button className="w-full">
+                  Manage Listings
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Payment Management
+            </CardTitle>
+            <CardDescription>
+              Handle transactions and escrow
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Transactions</span>
+                <Badge variant="outline">View All</Badge>
+              </div>
+              <Link href="/admin/payments">
+                <Button className="w-full">
+                  Manage Payments
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Platform Config
+            </CardTitle>
+            <CardDescription>
+              Configure platform settings
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Settings</span>
+                <Badge variant="outline">Configure</Badge>
+              </div>
+              <Link href="/admin/config">
+                <Button className="w-full">
+                  Platform Settings
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5" />
               Platform Stats
             </CardTitle>
@@ -236,12 +336,12 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm">Total Listings</span>
-                <Badge variant="outline">{stats.totalListings}</Badge>
-              </div>
-              <div className="flex items-center justify-between">
                 <span className="text-sm">Active Listings</span>
                 <Badge variant="default">{stats.activeListings}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Verified Sellers</span>
+                <Badge variant="default">{stats.verifiedFica}</Badge>
               </div>
             </div>
           </CardContent>

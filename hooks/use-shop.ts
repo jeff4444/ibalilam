@@ -37,6 +37,14 @@ export interface Part {
   created_at: string
   updated_at: string
   published_at: string | null
+  // MOQ and pricing fields
+  moq: number | null
+  moq_units: number | null
+  order_increment: number | null
+  pack_size_units: number | null
+  stock_on_hand_units: number | null
+  backorder_allowed: boolean | null
+  lead_time_days: number | null
 }
 
 export interface Order {
