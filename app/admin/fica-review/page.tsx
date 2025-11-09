@@ -63,11 +63,11 @@ export default function FicaReviewPage() {
       try {
         const { data: profile, error } = await supabase
           .from('user_profiles')
-          .select('user_role')
+          .select('user_role, is_admin')
           .eq('user_id', user.id)
           .single()
 
-        if (error || !profile || profile.user_role !== 'admin') {
+        if (error || !profile || !profile.is_admin) {
           router.push('/dashboard')
           return
         }

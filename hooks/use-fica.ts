@@ -17,7 +17,8 @@ export interface FicaStatus {
   fica_rejection_reason?: string
   fica_verified_at?: string | undefined
   fica_reviewed_at?: string | undefined
-  user_role: 'visitor' | 'buyer' | 'seller' | 'admin' | 'support'
+  user_role: 'visitor' | 'buyer' | 'seller'
+  is_admin?: boolean
 }
 
 export function useFica() {
@@ -41,7 +42,8 @@ export function useFica() {
           fica_rejection_reason: '',
           fica_verified_at: undefined,
           fica_reviewed_at: undefined,
-          user_role: 'visitor'
+          user_role: 'visitor',
+          is_admin: false
         })
         setDocuments([])
         return
@@ -50,7 +52,7 @@ export function useFica() {
       // Fetch user profile with FICA status - be more specific with the query
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role')
+        .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role, is_admin')
         .eq('user_id', currentUser.id)
         .maybeSingle()
 
@@ -78,12 +80,21 @@ export function useFica() {
             // Retry fetching the profile after creation
             const { data: newProfile, error: retryError } = await supabase
               .from('user_profiles')
-              .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role')
+              .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role, is_admin')
               .eq('user_id', currentUser.id)
               .single()
             
             if (!retryError && newProfile) {
-              setFicaStatus(newProfile)
+              const allowedRoles: FicaStatus['user_role'][] = ['visitor', 'buyer', 'seller']
+              const normalizedProfile: FicaStatus = {
+                ...newProfile,
+                user_role: allowedRoles.includes(newProfile.user_role as FicaStatus['user_role'])
+                  ? (newProfile.user_role as FicaStatus['user_role'])
+                  : 'visitor',
+                is_admin: Boolean(newProfile.is_admin)
+              }
+
+              setFicaStatus(normalizedProfile)
               // Continue with document fetching
               const { data: docs, error: docsError } = await supabase
                 .from('fica_documents')
@@ -105,7 +116,8 @@ export function useFica() {
           fica_rejection_reason: '',
           fica_verified_at: undefined,
           fica_reviewed_at: undefined,
-          user_role: 'visitor'
+          user_role: 'visitor',
+          is_admin: false
         })
         setDocuments([])
         return
@@ -126,13 +138,25 @@ export function useFica() {
         setDocuments(docs || [])
       }
 
+      const allowedRoles: FicaStatus['user_role'][] = ['visitor', 'buyer', 'seller']
+      const sanitizedProfile = profile
+        ? {
+            ...profile,
+            user_role: allowedRoles.includes(profile.user_role as FicaStatus['user_role'])
+              ? (profile.user_role as FicaStatus['user_role'])
+              : 'visitor',
+            is_admin: Boolean(profile.is_admin)
+          }
+        : null
+
       // Handle case when profile doesn't exist yet
-      setFicaStatus(profile || {
+      setFicaStatus(sanitizedProfile || {
         fica_status: null,
         fica_rejection_reason: '',
         fica_verified_at: undefined,
         fica_reviewed_at: undefined,
-        user_role: 'visitor'
+        user_role: 'visitor',
+        is_admin: false
       })
       setDocuments(docs || [])
     } catch (error) {

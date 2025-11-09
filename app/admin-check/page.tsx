@@ -60,7 +60,7 @@ export default function AdminCheckPage() {
       
       const { error } = await supabase
         .from('user_profiles')
-        .update({ user_role: 'admin' })
+        .update({ is_admin: true })
         .eq('user_id', user.id)
 
       if (error) {
@@ -130,13 +130,20 @@ export default function AdminCheckPage() {
             <div className="space-y-2">
               <div><strong>First Name:</strong> {userProfile.first_name || 'Not set'}</div>
               <div><strong>Last Name:</strong> {userProfile.last_name || 'Not set'}</div>
-              <div><strong>User Role:</strong> 
+              <div>
+                <strong>User Role:</strong> 
+                <span className="ml-2 px-2 py-1 rounded text-sm bg-gray-100 text-gray-800">
+                  {userProfile.user_role || 'Not set'}
+                </span>
+              </div>
+              <div>
+                <strong>Admin Access:</strong>
                 <span className={`ml-2 px-2 py-1 rounded text-sm ${
-                  userProfile.user_role === 'admin' 
-                    ? 'bg-green-100 text-green-800' 
+                  userProfile.is_admin
+                    ? 'bg-green-100 text-green-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {userProfile.user_role || 'Not set'}
+                  {userProfile.is_admin ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
               <div><strong>FICA Status:</strong> {userProfile.fica_status || 'Not set'}</div>
@@ -153,13 +160,13 @@ export default function AdminCheckPage() {
         <CardContent>
           <Button 
             onClick={setAsAdmin}
-            disabled={settingAdmin || userProfile?.user_role === 'admin'}
+            disabled={settingAdmin || userProfile?.is_admin}
             className="w-full"
           >
             {settingAdmin ? 'Setting...' : 'Set as Admin'}
           </Button>
           
-          {userProfile?.user_role === 'admin' && (
+          {userProfile?.is_admin && (
             <Alert className="mt-4">
               <AlertDescription>
                 ✅ You are already an admin! You should be able to access /admin now.

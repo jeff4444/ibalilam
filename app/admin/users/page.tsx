@@ -37,7 +37,8 @@ interface User {
   id: string
   email: string
   full_name: string
-  user_role: 'visitor' | 'buyer' | 'seller' | 'admin' | 'support'
+  user_role: 'visitor' | 'buyer' | 'seller'
+  is_admin: boolean
   fica_status: 'pending' | 'verified' | 'rejected' | null
   fica_rejection_reason?: string
   fica_verified_at?: string
@@ -93,11 +94,11 @@ export default function AdminUsersPage() {
       try {
         const { data: profile, error } = await supabase
           .from('user_profiles')
-          .select('user_role')
+          .select('user_role, is_admin')
           .eq('user_id', user.id)
           .single()
 
-        if (error || !profile || profile.user_role !== 'admin') {
+        if (error || !profile || !profile.is_admin) {
           router.push('/dashboard')
           return
         }
@@ -125,21 +126,30 @@ export default function AdminUsersPage() {
 
       if (error) throw error
 
-      const transformedUsers = data?.map(profile => ({
-        id: profile.user_id,
-        email: '', // We can't access auth.users email directly
-        full_name: profile.full_name || (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : (profile.first_name || profile.last_name || '')),
-        user_role: profile.user_role,
-        fica_status: profile.fica_status,
-        fica_rejection_reason: profile.fica_rejection_reason,
-        fica_verified_at: profile.fica_verified_at,
-        fica_reviewed_at: profile.fica_reviewed_at,
-        created_at: profile.created_at,
-        last_sign_in_at: undefined, // We can't access this directly
-        is_suspended: profile.is_suspended || false,
-        suspension_reason: profile.suspension_reason,
-        suspension_until: profile.suspension_until
-      })) || []
+      const allowedRoles: User['user_role'][] = ['visitor', 'buyer', 'seller']
+
+      const transformedUsers = data?.map(profile => {
+        const role = allowedRoles.includes(profile.user_role)
+          ? (profile.user_role as User['user_role'])
+          : 'visitor'
+
+        return {
+          id: profile.user_id,
+          email: '', // We can't access auth.users email directly
+          full_name: profile.full_name || (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : (profile.first_name || profile.last_name || '')),
+          user_role: role,
+          is_admin: Boolean(profile.is_admin),
+          fica_status: profile.fica_status,
+          fica_rejection_reason: profile.fica_rejection_reason,
+          fica_verified_at: profile.fica_verified_at,
+          fica_reviewed_at: profile.fica_reviewed_at,
+          created_at: profile.created_at,
+          last_sign_in_at: undefined, // We can't access this directly
+          is_suspended: profile.is_suspended || false,
+          suspension_reason: profile.suspension_reason,
+          suspension_until: profile.suspension_until
+        }
+      }) || []
 
       setUsers(transformedUsers)
     } catch (err: any) {
@@ -289,7 +299,8 @@ export default function AdminUsersPage() {
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.full_name.toLowerCase().includes(searchTerm.toLowerCase())
     
-    const matchesRole = roleFilter === 'all' || user.user_role === roleFilter
+    const matchesRole = roleFilter === 'all' ||
+      (roleFilter === 'admin' ? user.is_admin : user.user_role === roleFilter)
     const matchesFica = ficaFilter === 'all' || user.fica_status === ficaFilter
     const matchesStatus = statusFilter === 'all' || 
       (statusFilter === 'suspended' && user.is_suspended) ||
@@ -426,8 +437,7 @@ export default function AdminUsersPage() {
                 <SelectItem value="visitor">Visitor</SelectItem>
                 <SelectItem value="buyer">Buyer</SelectItem>
                 <SelectItem value="seller">Seller</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="support">Support</SelectItem>
+                <SelectItem value="admin">Admins</SelectItem>
               </SelectContent>
             </Select>
 
@@ -487,7 +497,10 @@ export default function AdminUsersPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{user.user_role}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{user.user_role}</Badge>
+                      {user.is_admin && <Badge variant="secondary">Admin</Badge>}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={
@@ -601,6 +614,10 @@ export default function AdminUsersPage() {
                 <div>
                   <Label>Account Status</Label>
                   <p className="text-sm">{selectedUser.is_suspended ? 'Suspended' : 'Active'}</p>
+                </div>
+                <div>
+                  <Label>Admin Access</Label>
+                  <p className="text-sm">{selectedUser.is_admin ? 'Yes' : 'No'}</p>
                 </div>
                 <div>
                   <Label>Joined</Label>

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -54,7 +55,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Part not found' }, { status: 404 })
     }
 
-    const sellerId = part.shops.user_id
+    const shop = Array.isArray(part.shops) ? part.shops[0] : part.shops
+    const sellerId = shop?.user_id
+    if (!sellerId) {
+      console.error('Seller not found for part:', partId, sellerId)
+      return NextResponse.json({ error: 'Seller not found' }, { status: 404 })
+    }
 
     // Check if user is trying to message themselves
     if (user.id === sellerId) {

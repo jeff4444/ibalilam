@@ -97,11 +97,11 @@ export default function DashboardPage() {
         try {
           const { data: profile } = await supabase
             .from('user_profiles')
-            .select('user_role')
+            .select('user_role, is_admin')
             .eq('user_id', user.id)
             .single()
           
-          setIsAdmin(profile?.user_role === 'admin')
+          setIsAdmin(Boolean(profile?.is_admin))
         } catch (error) {
           console.error('Error checking admin status:', error)
           setIsAdmin(false)

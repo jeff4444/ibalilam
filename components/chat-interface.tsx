@@ -325,7 +325,7 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
   const canRevealPhone = isBuyer ? !chatData.chat.phone_revealed_by_buyer : !chatData.chat.phone_revealed_by_seller
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-[calc(100vh-200px)] min-h-0">
       <SafetyTipsModal
         isOpen={showSafetyTips}
         onClose={() => setShowSafetyTips(false)}
@@ -437,7 +437,7 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
       )}
 
       {/* Messages */}
-      <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+      <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {chatData.messages.map((message) => {
           const isOwnMessage = message.sender_id === currentUserId
           const senderName = message.user_profiles?.full_name || 

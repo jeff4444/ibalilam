@@ -1,5 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
+
+async function enrichMessagesWithProfiles(
+  supabase: any,
+  messages: Array<Record<string, any>>
+) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return []
+  }
+
+  const senderIds = Array.from(
+    new Set(
+      messages
+        .map(message => message?.sender_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    )
+  )
+
+  if (senderIds.length === 0) {
+    return messages.map(message => ({ ...message, user_profiles: null }))
+  }
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('user_profiles')
+    .select('user_id, first_name, last_name, full_name')
+    .in('user_id', senderIds)
+
+  if (profilesError) {
+    console.error('Error fetching sender profiles:', profilesError)
+    return messages.map(message => ({ ...message, user_profiles: null }))
+  }
+
+  const profileMap: Record<string, any> = {}
+
+  if (Array.isArray(profiles)) {
+    profiles.forEach((profile: Record<string, any>) => {
+      const userId = typeof profile?.user_id === 'string' ? profile.user_id : null
+      if (userId) {
+        profileMap[userId] = profile
+      }
+    })
+  }
+
+  return messages.map(message => ({
+    ...message,
+    user_profiles: profileMap[message?.sender_id as string] ?? null
+  }))
+}
 
 export async function GET(
   request: NextRequest,
@@ -7,7 +55,7 @@ export async function GET(
 ) {
   try {
     const { chatId } = await params
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -50,7 +98,7 @@ export async function GET(
     }
 
     // Get messages for this chat
-    const { data: messages, error: messagesError } = await supabase
+    const { data: messagesData, error: messagesError } = await supabase
       .from('part_chat_messages')
       .select(`
         id,
@@ -59,12 +107,7 @@ export async function GET(
         message_type,
         file_url,
         is_read,
-        created_at,
-        user_profiles!sender_id(
-          first_name,
-          last_name,
-          full_name
-        )
+        created_at
       `)
       .eq('chat_id', chatId)
       .order('created_at', { ascending: true })
@@ -73,6 +116,9 @@ export async function GET(
       console.error('Error fetching messages:', messagesError)
       return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
     }
+
+    const baseMessages = messagesData ?? []
+    const messages = await enrichMessagesWithProfiles(supabase, baseMessages)
 
     // Get other user's profile
     const otherUserId = chat.buyer_id === user.id ? chat.seller_id : chat.buyer_id
@@ -87,7 +133,7 @@ export async function GET(
     }
 
     // Mark messages as read
-    const unreadMessageIds = messages
+    const unreadMessageIds = baseMessages
       ?.filter(m => m.sender_id !== user.id && !m.is_read)
       .map(m => m.id) || []
 
@@ -120,7 +166,7 @@ export async function POST(
 ) {
   try {
     const { chatId } = await params
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -159,26 +205,18 @@ export async function POST(
         message_type: messageType,
         file_url: fileUrl
       })
-      .select(`
-        id,
-        sender_id,
-        message_text,
-        message_type,
-        file_url,
-        is_read,
-        created_at,
-        user_profiles!sender_id(
-          first_name,
-          last_name,
-          full_name
-        )
-      `)
+      .select('*')
       .single()
 
     if (messageError) {
       console.error('Error creating message:', messageError)
       return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
     }
+
+    const [messageWithProfile] = await enrichMessagesWithProfiles(
+      supabase,
+      newMessage ? [newMessage] : []
+    )
 
     // Trigger notifications (fire and forget)
     try {
@@ -207,7 +245,7 @@ export async function POST(
       console.error('Notification trigger error:', error)
     }
 
-    return NextResponse.json({ message: newMessage })
+    return NextResponse.json({ message: messageWithProfile || newMessage })
   } catch (error) {
     console.error('Error in POST /api/messages/[chatId]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

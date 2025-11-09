@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -42,6 +43,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 })
     }
 
+    const chatPart = Array.isArray(chat.parts) ? chat.parts[0] : chat.parts
+    const chatShop = chatPart && Array.isArray(chatPart.shops) ? chatPart.shops[0] : chatPart?.shops
+
+    if (!chatPart || !chatShop) {
+      return NextResponse.json({ error: 'Part or shop details not found' }, { status: 404 })
+    }
+
     // Get message details
     const { data: message, error: messageError } = await supabase
       .from('part_chat_messages')
@@ -51,18 +59,29 @@ export async function POST(request: NextRequest) {
         message_text,
         message_type,
         file_url,
-        created_at,
-        user_profiles!sender_id(
-          first_name,
-          last_name,
-          full_name
-        )
+        created_at
       `)
       .eq('id', messageId)
       .single()
 
     if (messageError || !message) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
+    }
+
+    let senderProfile: Record<string, any> | null = null
+
+    if (message.sender_id) {
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, first_name, last_name, full_name')
+        .eq('user_id', message.sender_id)
+        .single()
+
+      if (profileError) {
+        console.error('Error fetching sender profile:', profileError)
+      } else {
+        senderProfile = profile
+      }
     }
 
     // Determine recipient
@@ -94,18 +113,18 @@ export async function POST(request: NextRequest) {
     // Send email notification
     const emailData = {
       to: authUser.user.email,
-      subject: `New message about ${chat.parts.name}`,
+      subject: `New message about ${chatPart.name}`,
       template: 'new-message',
       data: {
-        senderName: message.user_profiles?.full_name || 
-                   `${message.user_profiles?.first_name || ''} ${message.user_profiles?.last_name || ''}`.trim() ||
+        senderName: senderProfile?.full_name || 
+                   `${senderProfile?.first_name || ''} ${senderProfile?.last_name || ''}`.trim() ||
                    'Someone',
-        partName: chat.parts.name,
-        partImage: chat.parts.image_url,
+        partName: chatPart.name,
+        partImage: chatPart.image_url,
         messageText: message.message_text,
         messageType: message.message_type,
         chatUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/messages?chat=${chatId}`,
-        partUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/parts/${chat.parts.id}`
+        partUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/parts/${chatPart.id}`
       }
     }
 

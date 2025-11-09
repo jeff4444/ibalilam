@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     
     // Check if user is authenticated
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -21,11 +22,11 @@ export async function GET(request: NextRequest) {
     if (userId !== user.id) {
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('user_role')
+        .select('user_role, is_admin')
         .eq('user_id', user.id)
         .single()
 
-      if (profileError || profile?.user_role !== 'admin') {
+      if (profileError || !profile?.is_admin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     
     // Check if user is authenticated
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     
     // Check if user is authenticated
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -126,11 +127,11 @@ export async function DELETE(request: NextRequest) {
     if (document.user_id !== user.id) {
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('user_role')
+        .select('user_role, is_admin')
         .eq('user_id', user.id)
         .single()
 
-      if (profileError || profile?.user_role !== 'admin') {
+      if (profileError || !profile?.is_admin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }

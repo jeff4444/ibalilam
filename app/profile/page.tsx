@@ -314,7 +314,7 @@ export default function ProfilePage() {
     try {
       setIsLoading(true)
       setError("")
-      
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ user_role: 'seller' })
@@ -322,6 +322,7 @@ export default function ProfilePage() {
 
       if (error) {
         setError("Failed to update user role. Please try again.")
+        console.error('Error updating user role:', error)
         return
       }
 

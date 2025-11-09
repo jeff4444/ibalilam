@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -42,6 +43,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 })
     }
 
+    const chatPart = Array.isArray(chat.parts) ? chat.parts[0] : chat.parts
+    const chatShop = chatPart && Array.isArray(chatPart.shops) ? chatPart.shops[0] : chatPart?.shops
+
+    if (!chatPart || !chatShop) {
+      return NextResponse.json({ error: 'Part or shop details not found' }, { status: 404 })
+    }
+
     // Get message details
     const { data: message, error: messageError } = await supabase
       .from('part_chat_messages')
@@ -51,12 +59,7 @@ export async function POST(request: NextRequest) {
         message_text,
         message_type,
         file_url,
-        created_at,
-        user_profiles!sender_id(
-          first_name,
-          last_name,
-          full_name
-        )
+        created_at
       `)
       .eq('id', messageId)
       .single()
@@ -64,6 +67,27 @@ export async function POST(request: NextRequest) {
     if (messageError || !message) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
+
+    let senderProfile: Record<string, any> | null = null
+
+    if (message.sender_id) {
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('user_id, first_name, last_name, full_name')
+        .eq('user_id', message.sender_id)
+        .single()
+
+      if (profileError) {
+        console.error('Error fetching sender profile:', profileError)
+      } else {
+        senderProfile = profile
+      }
+    }
+
+    const senderName =
+      senderProfile?.full_name ||
+      `${senderProfile?.first_name || ''} ${senderProfile?.last_name || ''}`.trim() ||
+      'Someone'
 
     // Determine recipient
     const recipientId = chat.buyer_id === user.id ? chat.seller_id : chat.buyer_id
@@ -88,18 +112,19 @@ export async function POST(request: NextRequest) {
     // For now, we'll create a placeholder structure
     const pushNotificationData = {
       recipientId,
-      title: `New message about ${chat.parts.name}`,
+      title: `New message about ${chatPart.name}`,
       body: message.message_text.length > 100 
         ? `${message.message_text.substring(0, 100)}...`
         : message.message_text,
-      icon: chat.parts.image_url || '/placeholder.svg',
+      icon: chatPart.image_url || '/placeholder.svg',
       badge: '/badge-icon.png',
       data: {
         chatId,
-        partId: chat.parts.id,
+        partId: chatPart.id,
         messageId,
         type: 'new_message',
-        url: `/messages?chat=${chatId}`
+        url: `/messages?chat=${chatId}`,
+        senderName
       },
       actions: [
         {
