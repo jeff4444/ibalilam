@@ -21,6 +21,7 @@ import { useCartStore } from "@/lib/cart-store"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/utils/supabase/client"
 import { CartButton } from "@/components/cart-button"
+import { MainNavbar } from "@/components/navbar"
 
 interface FavoritePart {
   id: string
@@ -227,24 +228,7 @@ export default function FavoritesPage() {
   if (authLoading || loading) {
     return (
       <div className="flex flex-col min-h-screen">
-        <header className="px-4 lg:px-6 h-14 flex items-center border-b">
-          <Link className="flex items-center justify-center" href="/">
-            <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-            <span className="font-bold text-xl">Techafon</span>
-          </Link>
-          <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
-            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
-              Browse Parts
-            </Link>
-            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-              Dashboard
-            </Link>
-            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
-              Profile
-            </Link>
-            <CartButton />
-          </nav>
-        </header>
+        <MainNavbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -257,25 +241,7 @@ export default function FavoritesPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="px-4 lg:px-6 h-14 flex items-center border-b">
-        <Link className="flex items-center justify-center" href="/">
-          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Techafon</span>
-        </Link>
-        <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
-            Browse Parts
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
-            Profile
-          </Link>
-          <CartButton />
-        </nav>
-      </header>
+      <MainNavbar />
 
       <div className="flex-1 space-y-6 p-4 md:p-8">
         {error && (

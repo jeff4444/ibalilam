@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CartButton } from "@/components/cart-button"
+import { MainNavbar } from "@/components/navbar"
 import { useParts } from "@/hooks/use-parts"
 
 // Category configuration with icons and names
@@ -151,28 +152,7 @@ export default function PartsPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
-        <Link className="flex items-center justify-center" href="/">
-          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Techafon</span>
-        </Link>
-        <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
-            Browse Parts
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
-            Favorites
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
-            Profile
-          </Link>
-          <CartButton />
-        </nav>
-      </header>
+      <MainNavbar />
 
       <div className="flex-1 max-w-7xl mx-auto px-4 py-8">
         <div className="mb-8">

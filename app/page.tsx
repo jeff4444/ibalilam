@@ -16,42 +16,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { MainNavbar } from "@/components/navbar"
 
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen bg-white">
-      {/* Header */}
-      <header className="px-4 lg:px-6 h-14 flex items-center border-b sticky top-0 z-30 bg-white">
-        <Link className="flex items-center justify-center" href="/">
-          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Techafon</span>
-        </Link>
-        <nav className="ml-auto flex gap-4 sm:gap-6">
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
-            Browse Parts
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
-            Favorites
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
-            Messages
-          </Link>
-          {/* Show Dashboard and Profile when logged in */}
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
-            Profile
-          </Link>
-          {/* Show Login/Sign Up when not logged in */}
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/login">
-            Login
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/signup">
-            Sign Up
-          </Link>
-        </nav>
-      </header>
+      <MainNavbar />
 
       <main className="flex-1">
         {/* Hero Section */}

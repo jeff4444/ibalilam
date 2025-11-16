@@ -17,7 +17,6 @@ import {
   Wrench,
   Store,
   TrendingUp,
-  DollarSign,
   RefreshCw,
   X,
 } from "lucide-react"
@@ -34,6 +33,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CartButton } from "@/components/cart-button"
+import { MainNavbar } from "@/components/navbar"
 import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
 import { useFica } from "@/hooks/use-fica"
@@ -273,12 +273,7 @@ export default function DashboardPage() {
   if (authLoading || loading) {
     return (
       <div className="flex flex-col min-h-screen">
-        <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
-          <Link className="flex items-center justify-center" href="/">
-            <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-            <span className="font-bold text-xl">Techafon</span>
-          </Link>
-        </header>
+        <MainNavbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -291,31 +286,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
-        <Link className="flex items-center justify-center" href="/">
-          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Techafon</span>
-        </Link>
-        <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
-            Browse Parts
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
-            Favorites
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
-            Messages
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
-            Profile
-          </Link>
-          <CartButton />
-        </nav>
-      </header>
+      <MainNavbar />
 
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         {error && (
@@ -358,11 +329,17 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${shopStats?.total_sales?.toLocaleString() || '0'}
+                R {shopStats?.total_sales?.toLocaleString(
+                  undefined,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                ) || '0.00'}
               </div>
               <p className="text-xs text-muted-foreground">
                 {shopStats?.conversion_rate ? `${shopStats.conversion_rate}% conversion rate` : 'No sales yet'}
@@ -570,7 +547,7 @@ export default function DashboardPage() {
                             </div>
                           </TableCell>
                           <TableCell>{part.category}</TableCell>
-                          <TableCell>${part.price.toFixed(2)}</TableCell>
+                          <TableCell>R{part.price.toFixed(2)}</TableCell>
                           <TableCell>{part.stock_quantity}</TableCell>
                           <TableCell>
                             <Badge variant={
@@ -770,10 +747,10 @@ export default function DashboardPage() {
                           <TableCell>
                             <Badge variant="default">{part.refurbished_condition || 'Unknown'}</Badge>
                           </TableCell>
-                          <TableCell>${part.cost?.toFixed(2) || '0.00'}</TableCell>
-                          <TableCell>${part.price.toFixed(2)}</TableCell>
+                          <TableCell>R{part.cost?.toFixed(2) || '0.00'}</TableCell>
+                          <TableCell>R{part.price.toFixed(2)}</TableCell>
                           <TableCell className="text-green-600 font-medium">
-                            +${part.profit?.toFixed(2) || '0.00'}
+                            +R{part.profit?.toFixed(2) || '0.00'}
                           </TableCell>
                           <TableCell>{part.time_spent_hours ? `${part.time_spent_hours}h` : 'N/A'}</TableCell>
                           <TableCell>
@@ -1088,7 +1065,7 @@ export default function DashboardPage() {
                           <TableCell className="font-medium">{order.order_number}</TableCell>
                           <TableCell>{order.customer_name || 'Guest'}</TableCell>
                           <TableCell>{order.product_name || 'Multiple items'}</TableCell>
-                          <TableCell>${order.amount.toFixed(2)}</TableCell>
+                          <TableCell>R{order.amount.toFixed(2)}</TableCell>
                           <TableCell>
                             <Badge variant={
                               order.status === 'shipped' ? 'default' :
@@ -1173,7 +1150,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Price</Label>
-                  <p className="text-lg font-semibold">${selectedPart.price.toFixed(2)}</p>
+                  <p className="text-lg font-semibold">R{selectedPart.price.toFixed(2)}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Stock Quantity</Label>
@@ -1203,11 +1180,11 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Cost</Label>
-                      <p className="text-sm">${selectedPart.cost?.toFixed(2) || "0.00"}</p>
+                    <p className="text-sm">R{selectedPart.cost?.toFixed(2) || "0.00"}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Profit</Label>
-                      <p className="text-sm text-green-600">+${selectedPart.profit?.toFixed(2) || "0.00"}</p>
+                    <p className="text-sm text-green-600">+R{selectedPart.profit?.toFixed(2) || "0.00"}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Time Spent</Label>
