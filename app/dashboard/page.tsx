@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -55,6 +55,8 @@ export default function DashboardPage() {
   const [partToDelete, setPartToDelete] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isSeller, setIsSeller] = useState<boolean | null>(null)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
@@ -90,27 +92,37 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, router])
 
-  // Check if user is admin
+  // Check if user is admin and seller
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (user?.id) {
         try {
           const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('user_role, is_admin')
-            .eq('user_id', user.id)
+            .from("user_profiles")
+            .select("user_role, is_admin")
+            .eq("user_id", user.id)
             .single()
-          
+
           setIsAdmin(Boolean(profile?.is_admin))
+          setIsSeller(profile?.user_role === "seller")
         } catch (error) {
           console.error('Error checking admin status:', error)
           setIsAdmin(false)
+          setIsSeller(null)
         }
       }
     }
 
     checkAdminStatus()
   }, [user?.id, supabase])
+
+  // Redirect non-seller users away from dashboard
+  useEffect(() => {
+    if (!authLoading && user && isSeller === false) {
+      setAccessDenied(true)
+      router.push("/profile")
+    }
+  }, [authLoading, user, isSeller, router])
 
   // Fetch part interactions and chats
   useEffect(() => {
@@ -270,7 +282,7 @@ export default function DashboardPage() {
   }
 
   // Show loading state while checking authentication
-  if (authLoading || loading) {
+  if (authLoading || loading || isSeller === null || accessDenied) {
     return (
       <div className="flex flex-col min-h-screen">
         <MainNavbar />
@@ -285,19 +297,24 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
       <MainNavbar />
 
-      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <main className="flex-1 container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
         
-        <div className="flex items-center justify-between space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-          <div className="flex items-center space-x-2">
+        <div className="mb-2 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+            <p className="text-muted-foreground mt-1">
+              Manage your parts inventory and track sales performance
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
             {isAdmin && (
               <Button asChild variant="secondary">
                 <Link href="/admin">
@@ -306,16 +323,16 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
-            <Button 
-              onClick={refreshData} 
-              variant="outline" 
-              size="sm"
+            <Button
+              onClick={refreshData}
+              variant="outline"
+              size="default"
               disabled={refreshing}
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               {refreshing ? 'Refreshing...' : 'Refresh'}
             </Button>
-            <Button asChild>
+            <Button asChild className="bg-primary hover:bg-primary/90">
               <Link href="/sell">
                 <Plus className="mr-2 h-4 w-4" />
                 Add New Part
@@ -325,14 +342,20 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <Card>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mb-2">
+          <Card className="border-l-4 border-l-primary">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Sales
+              </CardTitle>
+              <CardAction>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                </div>
+              </CardAction>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold">
                 R {shopStats?.total_sales?.toLocaleString(
                   undefined,
                   {
@@ -346,13 +369,19 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-4 border-l-chart-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Listings</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Active Listings
+              </CardTitle>
+              <CardAction>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-chart-2/10">
+                  <Package className="h-5 w-5 text-chart-2" />
+                </div>
+              </CardAction>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold">
                 {(originalParts.filter(p => p.status === 'active').length + refurbishedParts.filter(p => p.status === 'active').length)}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -360,13 +389,19 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-4 border-l-chart-3">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Views</CardTitle>
-              <Eye className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Views
+              </CardTitle>
+              <CardAction>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-chart-3/10">
+                  <Eye className="h-5 w-5 text-chart-3" />
+                </div>
+              </CardAction>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold">
                 {(originalParts.reduce((sum, part) => sum + part.views, 0) + refurbishedParts.reduce((sum, part) => sum + part.views, 0)).toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -374,13 +409,19 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-4 border-l-chart-4">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Refurbished Sold</CardTitle>
-              <Wrench className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Refurbished Sold
+              </CardTitle>
+              <CardAction>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-chart-4/10">
+                  <Wrench className="h-5 w-5 text-chart-4" />
+                </div>
+              </CardAction>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold">
                 {refurbishedParts.filter(p => p.status === 'sold').length}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -392,10 +433,35 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setShowFicaModal(true)}>
+          <Card
+            className={`cursor-pointer hover:bg-muted/70 transition-colors border-l-4 ${
+              ficaStatus?.fica_status === "verified"
+                ? "border-l-emerald-500"
+                : "border-l-red-500"
+            }`}
+            onClick={() => setShowFicaModal(true)}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">FICA Status</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                FICA Status
+              </CardTitle>
+              <CardAction>
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                    ficaStatus?.fica_status === "verified"
+                      ? "bg-emerald-50"
+                      : "bg-red-50"
+                  }`}
+                >
+                  <FileText
+                    className={`h-5 w-5 ${
+                      ficaStatus?.fica_status === "verified"
+                        ? "text-emerald-600"
+                        : "text-red-600"
+                    }`}
+                  />
+                </div>
+              </CardAction>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -418,42 +484,59 @@ export default function DashboardPage() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="original" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="original">Original Parts</TabsTrigger>
-            <TabsTrigger value="refurbished">Refurbished Parts</TabsTrigger>
-            <TabsTrigger value="interactions">Interactions</TabsTrigger>
-            <TabsTrigger value="shop">Shop Management</TabsTrigger>
+          {/* Top tab navigation */}
+          <div className="flex justify-center">
+            <TabsList className="inline-flex items-center gap-6 rounded-full bg-muted px-4 py-1 text-muted-foreground">
+            <TabsTrigger
+              value="original"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+            >
+              Original Parts
+            </TabsTrigger>
+            <TabsTrigger
+              value="refurbished"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+            >
+              Refurbished Parts
+            </TabsTrigger>
+            <TabsTrigger
+              value="interactions"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+            >
+              Interactions
+            </TabsTrigger>
+            <TabsTrigger
+              value="shop"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+            >
+              Shop Management
+            </TabsTrigger>
           </TabsList>
+          </div>
 
           {/* Original Parts Tab */}
           <TabsContent value="original" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Your Original Parts Listings</CardTitle>
-                <CardDescription>Manage your electronic parts inventory and listings</CardDescription>
+                <CardTitle className="text-xl">Your Original Parts Listings</CardTitle>
+                <CardDescription className="mt-1">
+                  Manage your electronic parts inventory and listings
+                </CardDescription>
                 <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
                     <div className="relative flex-1 max-w-sm">
-                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search parts..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-8"
+                        className="pl-9"
                       />
                     </div>
-                    <Button variant="outline" size="sm" onClick={clearFilters}>
-                      <X className="mr-2 h-4 w-4" />
-                      Clear
-                    </Button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <Label htmlFor="category-filter">Category</Label>
+                    <div className="flex flex-wrap gap-3">
                       <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All categories" />
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Category" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All categories</SelectItem>
@@ -462,13 +545,9 @@ export default function DashboardPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="status-filter">Status</Label>
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All statuses" />
+                        <SelectTrigger className="w-[160px]">
+                          <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All statuses</SelectItem>
@@ -479,140 +558,165 @@ export default function DashboardPage() {
                           <SelectItem value="draft">Draft</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="min-price">Min Price</Label>
                       <Input
-                        id="min-price"
                         type="number"
-                        placeholder="0.00"
+                        placeholder="Min Price"
                         value={priceRange.min}
                         onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                        className="w-[120px]"
                       />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="max-price">Max Price</Label>
                       <Input
-                        id="max-price"
                         type="number"
-                        placeholder="1000.00"
+                        placeholder="Max Price"
                         value={priceRange.max}
                         onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                        className="w-[120px]"
                       />
+                      <Button variant="ghost" size="icon" onClick={clearFilters}>
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Views</TableHead>
-                      <TableHead>Saves</TableHead>
-                      <TableHead>Chats</TableHead>
-                      <TableHead>MOQ</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredOriginalParts.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                          {originalParts.length === 0 
-                            ? <>No original parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first part</Link></>
-                            : "No parts match your current filters. Try adjusting your search criteria."
-                          }
-                        </TableCell>
+              <CardContent className="space-y-6">
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Product</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Views</TableHead>
+                        <TableHead>Saves</TableHead>
+                        <TableHead>Chats</TableHead>
+                        <TableHead>MOQ</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ) : (
-                      filteredOriginalParts.map((part) => (
-                        <TableRow key={part.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center space-x-3">
-                              <Image
-                                src={part.images?.[0] || part.image_url || "/placeholder.svg"}
-                                alt={part.name}
-                                width={40}
-                                height={40}
-                                className="rounded-md"
-                              />
-                              <span>{part.name}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{part.category}</TableCell>
-                          <TableCell>R{part.price.toFixed(2)}</TableCell>
-                          <TableCell>{part.stock_quantity}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              part.status === "active" ? "default" : 
-                              part.status === "out_of_stock" ? "destructive" : 
-                              "secondary"
-                            }>
-                              {part.status === "active" ? "Active" : 
-                               part.status === "out_of_stock" ? "Out of Stock" :
-                               part.status === "draft" ? "Draft" :
-                               part.status === "inactive" ? "Inactive" : "Sold"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{part.views}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-1">
-                              <Heart className="h-4 w-4 text-red-500" />
-                              <span>{partInteractions[part.id]?.saves || 0}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-1">
-                              <MessageCircle className="h-4 w-4 text-blue-500" />
-                              <span>{partInteractions[part.id]?.chats || 0}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {part.moq_units || part.moq || 1}
-                            {part.pack_size_units && (
-                              <div className="text-xs text-muted-foreground">
-                                Pack: {part.pack_size_units}
+                    </TableHeader>
+                    <TableBody>
+                      {filteredOriginalParts.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={10}>
+                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                                <Package className="h-8 w-8 text-primary" />
                               </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleViewPart(part)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  View
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEditPart(part)}>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  className="text-red-600"
-                                  onClick={() => handleDeletePart(part)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                              <h3 className="mb-2 text-lg font-semibold">
+                                {originalParts.length === 0
+                                  ? "No original parts found"
+                                  : "No parts match your current filters"}
+                              </h3>
+                              <p className="mb-4 text-sm text-muted-foreground">
+                                {originalParts.length === 0
+                                  ? "Get started by adding your first part to the marketplace"
+                                  : "Try adjusting your search criteria to see more results"}
+                              </p>
+                              <Button asChild className="bg-primary hover:bg-primary/90">
+                                <Link href="/sell">
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  {originalParts.length === 0
+                                    ? "Add your first part"
+                                    : "Add a new part"}
+                                </Link>
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        filteredOriginalParts.map((part) => (
+                          <TableRow key={part.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center space-x-3">
+                                <Image
+                                  src={part.images?.[0] || part.image_url || "/placeholder.svg"}
+                                  alt={part.name}
+                                  width={40}
+                                  height={40}
+                                  className="rounded-md"
+                                />
+                                <span>{part.name}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>{part.category}</TableCell>
+                            <TableCell>R{part.price.toFixed(2)}</TableCell>
+                            <TableCell>{part.stock_quantity}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  part.status === "active"
+                                    ? "default"
+                                    : part.status === "out_of_stock"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                              >
+                                {part.status === "active"
+                                  ? "Active"
+                                  : part.status === "out_of_stock"
+                                  ? "Out of Stock"
+                                  : part.status === "draft"
+                                  ? "Draft"
+                                  : part.status === "inactive"
+                                  ? "Inactive"
+                                  : "Sold"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{part.views}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-1">
+                                <Heart className="h-4 w-4 text-red-500" />
+                                <span>{partInteractions[part.id]?.saves || 0}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-1">
+                                <MessageCircle className="h-4 w-4 text-blue-500" />
+                                <span>{partInteractions[part.id]?.chats || 0}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {part.moq_units || part.moq || 1}
+                              {part.pack_size_units && (
+                                <div className="text-xs text-muted-foreground">
+                                  Pack: {part.pack_size_units}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" className="h-8 w-8 p-0">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleViewPart(part)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    View
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleEditPart(part)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-red-600"
+                                    onClick={() => handleDeletePart(part)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1087,7 +1191,7 @@ export default function DashboardPage() {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
+      </main>
 
       {/* View Part Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>

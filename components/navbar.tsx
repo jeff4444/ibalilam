@@ -4,9 +4,37 @@ import Link from "next/link"
 import { Cpu } from "lucide-react"
 import { CartButton } from "./cart-button"
 import { useAuth } from "@/hooks/use-auth"
+import { useEffect, useState } from "react"
+import { createClient } from "@/utils/supabase/client"
 
 export function MainNavbar() {
   const { user, loading } = useAuth()
+  const [isSeller, setIsSeller] = useState<boolean | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!user?.id) {
+        setIsSeller(null)
+        return
+      }
+
+      try {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("user_role")
+          .eq("user_id", user.id)
+          .single()
+
+        setIsSeller(profile?.user_role === "seller")
+      } catch (error) {
+        console.error("Error fetching user role for navbar:", error)
+        setIsSeller(null)
+      }
+    }
+
+    fetchUserRole()
+  }, [user?.id, supabase])
 
   return (
     <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
@@ -26,9 +54,11 @@ export function MainNavbar() {
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
               Messages
             </Link>
-            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-              Dashboard
-            </Link>
+            {isSeller && (
+              <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+                Dashboard
+              </Link>
+            )}
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
               Profile
             </Link>

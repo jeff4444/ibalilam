@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Cpu, Star, MapPin, Phone, Mail, Edit, Camera, Save, X, LogOut, Plus, Trash2 } from "lucide-react"
+import { Cpu, Star, MapPin, Phone, Mail, Edit, Camera, Save, X, LogOut, Plus, Trash2, Shield } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -56,6 +56,7 @@ export default function ProfilePage() {
   })
   const [newSpecialization, setNewSpecialization] = useState("")
   const [shopData, setShopData] = useState<any>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const router = useRouter()
   const { user, loading, signOut } = useAuth()
   const supabase = createClient()
@@ -163,6 +164,28 @@ export default function ProfilePage() {
     }
 
     fetchShopData()
+  }, [user?.id, supabase])
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (user?.id) {
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('is_admin')
+            .eq('user_id', user.id)
+            .single()
+
+          setIsAdmin(Boolean(profile?.is_admin))
+        } catch (error) {
+          console.error('Error checking admin status:', error)
+          setIsAdmin(false)
+        }
+      }
+    }
+
+    checkAdminStatus()
   }, [user?.id, supabase])
 
   const stats = {
@@ -344,7 +367,7 @@ export default function ProfilePage() {
   // Show loading state while checking authentication
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen">
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
         <MainNavbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -357,10 +380,10 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
       <MainNavbar />
 
-      <div className="flex-1 space-y-6 p-4 md:p-8">
+      <main className="flex-1 container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -372,9 +395,22 @@ export default function ProfilePage() {
           </Alert>
         )}
         
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Profile</h1>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage your personal details, shop information and FICA status
+            </p>
+          </div>
           <div className="flex items-center space-x-2">
+            {isAdmin && (
+              <Button asChild variant="secondary">
+                <Link href="/admin">
+                  <Shield className="mr-2 h-4 w-4" />
+                  Admin Panel
+                </Link>
+              </Button>
+            )}
             {!isEditing ? (
               <>
                 <Button onClick={() => setIsEditing(true)} disabled={isLoading}>
@@ -403,10 +439,10 @@ export default function ProfilePage() {
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Profile Card */}
-          <Card className="md:col-span-1">
+          <Card className="md:col-span-1 rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
             <CardHeader className="text-center">
               <div className="relative mx-auto">
-                <Avatar className="w-24 h-24">
+                <Avatar className="w-24 h-24 border-2 border-primary/20 shadow-sm">
                   <AvatarImage src="/placeholder.svg?height=96&width=96" />
                   <AvatarFallback className="text-2xl">
                     {`${userProfile.firstName} ${userProfile.lastName}`.trim()
@@ -503,16 +539,42 @@ export default function ProfilePage() {
 
           {/* Main Content */}
           <div className="md:col-span-2 space-y-6">
-            <Tabs defaultValue="about" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="about">About</TabsTrigger>
-                <TabsTrigger value="shop">Shop Info</TabsTrigger>
-                <TabsTrigger value="fica">FICA Verification</TabsTrigger>
-                <TabsTrigger value="notifications">Notifications</TabsTrigger>
-              </TabsList>
+            <Tabs defaultValue="about" className="w-full space-y-4">
+              <div className="flex justify-center">
+                <TabsList className="inline-flex items-center gap-3 rounded-full bg-muted px-3 py-1 text-muted-foreground">
+                  <TabsTrigger
+                    value="about"
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+                  >
+                    About
+                  </TabsTrigger>
+                  {userProfile.userRole === "seller" && (
+                    <>
+                      <TabsTrigger
+                        value="shop"
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+                      >
+                        Shop Info
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="fica"
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+                      >
+                        FICA Verification
+                      </TabsTrigger>
+                    </>
+                  )}
+                  <TabsTrigger
+                    value="notifications"
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
+                  >
+                    Notifications
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="about" className="space-y-4">
-                <Card>
+                <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
                   <CardHeader>
                     <CardTitle>About Me</CardTitle>
                     <CardDescription>Tell others about your expertise and interests</CardDescription>
@@ -532,7 +594,7 @@ export default function ProfilePage() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
                   <CardHeader>
                     <CardTitle>Specializations</CardTitle>
                     <CardDescription>Add your areas of expertise and specializations</CardDescription>
@@ -588,10 +650,23 @@ export default function ProfilePage() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {userProfile.userRole !== "seller" && (
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleBecomeSeller}
+                      disabled={isLoading}
+                      className="w-full sm:w-auto"
+                    >
+                      {isLoading ? "Updating..." : "Become a Seller"}
+                    </Button>
+                  </div>
+                )}
               </TabsContent>
 
-              <TabsContent value="shop" className="space-y-4">
-                <Card>
+              {userProfile.userRole === "seller" && (
+                <TabsContent value="shop" className="space-y-4">
+                <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
                   <CardHeader>
                     <CardTitle>Shop Information</CardTitle>
                     <CardDescription>Manage your shop details and policies</CardDescription>
@@ -627,7 +702,7 @@ export default function ProfilePage() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
                   <CardHeader>
                     <CardTitle>Shop Policies</CardTitle>
                     <CardDescription>Manage your shop policies and terms</CardDescription>
@@ -743,49 +818,40 @@ export default function ProfilePage() {
                   </CardContent>
                 </Card>
               </TabsContent>
+              )}
 
-              <TabsContent value="fica" className="space-y-4">
-                {userProfile.userRole !== 'seller' && (
-                  <Card>
+              {userProfile.userRole === "seller" && (
+                <TabsContent value="fica" className="space-y-4">
+                  <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
                     <CardHeader>
-                      <CardTitle>Become a Seller</CardTitle>
+                      <CardTitle>FICA Verification</CardTitle>
                       <CardDescription>
-                        Start selling on Techafon by becoming a seller
+                        Complete FICA verification to become a verified seller and access loan features
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button 
-                        onClick={handleBecomeSeller}
-                        disabled={isLoading}
-                        className="w-full"
-                      >
-                        {isLoading ? 'Updating...' : 'Become a Seller'}
-                      </Button>
+                      <FicaUpload />
                     </CardContent>
                   </Card>
-                )}
-                
-                <Card>
-                  <CardHeader>
-                    <CardTitle>FICA Verification</CardTitle>
-                    <CardDescription>
-                      Complete FICA verification to become a verified seller and access loan features
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <FicaUpload />
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                </TabsContent>
+              )}
 
               <TabsContent value="notifications" className="space-y-4">
-                <NotificationPreferences />
+                <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle>Notification Preferences</CardTitle>
+                    <CardDescription>Choose how you want to be notified about activity</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <NotificationPreferences />
+                  </CardContent>
+                </Card>
               </TabsContent>
 
             </Tabs>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
