@@ -1,27 +1,25 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Cpu, Plus, Minus, Trash2, ShoppingCart, ArrowLeft, AlertTriangle, CheckCircle } from "lucide-react"
+import { Plus, Minus, Trash2, ShoppingCart, ArrowLeft, AlertTriangle, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useCartStore } from "@/lib/cart-store"
-import { CartButton } from "@/components/cart-button"
 import { MainNavbar } from "@/components/navbar"
 import { QuantitySelector } from "@/components/quantity-selector"
 
 export default function CartPage() {
-  const { items, updateQuantity, removeItem, getTotalPrice, getTotalItems, validateCart, getInvalidItems } = useCartStore()
-  const [isLoading, setIsLoading] = useState(false)
+  const { items, updateQuantity, removeItem, getTotalPrice, getTotalItems, validateCart } =
+    useCartStore()
 
   const totalPrice = getTotalPrice()
   const totalItems = getTotalItems()
   const shipping = totalPrice > 50 ? 0 : 9.99
-  const tax = totalPrice * 0.08
+  const tax = totalPrice * 0.15
   const finalTotal = totalPrice + shipping + tax
 
   const handleQuantityChange = (id: string, newQuantity: number, priceInfo?: any) => {
@@ -39,15 +37,10 @@ export default function CartPage() {
       return
     }
     
-    setIsLoading(true)
-    // Simulate loading
-    setTimeout(() => {
-      window.location.href = "/checkout"
-    }, 1000)
+    window.location.href = "/checkout"
   }
 
   const cartValidation = validateCart()
-  const invalidItems = getInvalidItems()
 
   if (items.length === 0) {
     return (
@@ -146,8 +139,10 @@ export default function CartPage() {
                               initialQuantity={item.quantity}
                               moqUnits={item.moqUnits || 1}
                               orderIncrement={item.orderIncrement || 1}
-                              packSizeUnits={item.packSizeUnits}
-                              onQuantityChange={handleQuantityChange}
+                              packSizeUnits={item.packSizeUnits ?? null}
+                              onQuantityChange={(quantity, isValid, priceInfo) =>
+                                handleQuantityChange(item.id, quantity, priceInfo)
+                              }
                               className="max-w-xs"
                             />
                           ) : (
@@ -193,10 +188,10 @@ export default function CartPage() {
                         
                         <div className="text-right min-w-[120px]">
                           <p className="font-medium">
-                            ${((item.tierPrice || item.price) * item.quantity).toFixed(2)}
+                            R{((item.tierPrice || item.price) * item.quantity).toFixed(2)}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            ${(item.tierPrice || item.price).toFixed(2)} each
+                            R{(item.tierPrice || item.price).toFixed(2)} each
                           </p>
                           {item.tierName && item.tierName !== 'Base Price' && (
                             <p className="text-xs text-blue-600">{item.tierName}</p>
@@ -220,26 +215,26 @@ export default function CartPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>Subtotal ({totalItems} items)</span>
-                    <span>${totalPrice.toFixed(2)}</span>
+                    <span>R{totalPrice.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Shipping</span>
-                    <span>{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</span>
+                    <span>{shipping === 0 ? "Free" : `R${shipping.toFixed(2)}`}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Tax</span>
-                    <span>${tax.toFixed(2)}</span>
+                    <span>R{tax.toFixed(2)}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between font-medium text-lg">
                     <span>Total</span>
-                    <span>${finalTotal.toFixed(2)}</span>
+                    <span>R{finalTotal.toFixed(2)}</span>
                   </div>
                 </div>
 
                 {shipping > 0 && (
                   <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-md">
-                    Add ${(50 - totalPrice).toFixed(2)} more for free shipping!
+                    Add R{(50 - totalPrice).toFixed(2)} more for free shipping!
                   </div>
                 )}
 
@@ -247,11 +242,9 @@ export default function CartPage() {
                   className="w-full" 
                   size="lg" 
                   onClick={handleCheckout} 
-                  disabled={isLoading || !cartValidation.isValid}
+                  disabled={!cartValidation.isValid}
                 >
-                  {isLoading ? "Processing..." : 
-                   !cartValidation.isValid ? "Fix quantity issues to continue" : 
-                   "Proceed to Checkout"}
+                  {!cartValidation.isValid ? "Fix quantity issues to continue" : "Proceed to Checkout"}
                 </Button>
 
                 <div className="text-xs text-muted-foreground space-y-1">
@@ -264,21 +257,12 @@ export default function CartPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Accepted Payment Methods</CardTitle>
+                <CardTitle className="text-sm">Accepted Payment Method</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex space-x-2">
-                  <div className="w-8 h-5 bg-blue-600 rounded text-white text-xs flex items-center justify-center">
-                    VISA
-                  </div>
-                  <div className="w-8 h-5 bg-red-600 rounded text-white text-xs flex items-center justify-center">
-                    MC
-                  </div>
-                  <div className="w-8 h-5 bg-blue-500 rounded text-white text-xs flex items-center justify-center">
-                    AMEX
-                  </div>
-                  <div className="w-8 h-5 bg-yellow-500 rounded text-white text-xs flex items-center justify-center">
-                    PP
+                <div className="flex items-center">
+                  <div className="px-3 py-1 bg-orange-600 rounded text-white text-xs font-semibold flex items-center justify-center">
+                    PayFast
                   </div>
                 </div>
               </CardContent>

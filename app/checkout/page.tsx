@@ -14,15 +14,16 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCartStore } from "@/lib/cart-store"
-import { CartButton } from "@/components/cart-button"
 import { MainNavbar } from "@/components/navbar"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function CheckoutPage() {
-  const { items, getTotalPrice, getTotalItems } = useCartStore()
   const { toast } = useToast()
+  const { user, loading: authLoading } = useAuth()
   const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState("payfast")
+  const [isCartLoading, setIsCartLoading] = useState(true)
+  const { items, getTotalPrice, getTotalItems, syncCart, isSyncing } = useCartStore()
   const [shippingMethod, setShippingMethod] = useState("standard")
   const payfastFormRef = useRef<HTMLFormElement>(null)
   const [payfastData, setPayfastData] = useState<Record<string, string> | null>(null)
@@ -42,7 +43,7 @@ export default function CheckoutPage() {
   const totalPrice = getTotalPrice()
   const totalItems = getTotalItems()
   const shippingCost = shippingMethod === "express" ? 19.99 : totalPrice > 50 ? 0 : 9.99
-  const tax = totalPrice * 0.08
+  const tax = totalPrice * 0.15
   const finalTotal = totalPrice + shippingCost + tax
 
   const handleInputChange = (field: string, value: string | boolean) => {
@@ -101,6 +102,54 @@ export default function CheckoutPage() {
       payfastFormRef.current.submit()
     }
   }, [payfastData, payfastUrl])
+
+  // Wait for cart to load from DB or localStorage
+  useEffect(() => {
+    // Wait for auth to finish loading
+    if (authLoading) {
+      return
+    }
+
+    const loadCart = async () => {
+      // If user is authenticated, sync cart from database
+      if (user) {
+        try {
+          await syncCart()
+        } catch (error) {
+          console.error('Error syncing cart:', error)
+        }
+      }
+      
+      // For guests, Zustand persist hydrates automatically from localStorage
+      // For authenticated users, we'll wait for isSyncing to become false
+      if (!user) {
+        setIsCartLoading(false)
+      }
+    }
+
+    loadCart()
+  }, [user, authLoading, syncCart])
+
+  // Watch for sync completion for authenticated users
+  useEffect(() => {
+    if (!authLoading && user && !isSyncing) {
+      setIsCartLoading(false)
+    }
+  }, [authLoading, user, isSyncing])
+
+  // Show loading state while cart is being loaded
+  if (isCartLoading || authLoading || isSyncing) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <MainNavbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <h2 className="text-2xl font-bold">Loading checkout...</h2>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (items.length === 0) {
     return (

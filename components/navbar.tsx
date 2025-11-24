@@ -6,11 +6,13 @@ import { CartButton } from "./cart-button"
 import { useAuth } from "@/hooks/use-auth"
 import { useEffect, useState } from "react"
 import { createClient } from "@/utils/supabase/client"
+import { useCartStore } from "@/lib/cart-store"
 
 export function MainNavbar() {
   const { user, loading } = useAuth()
   const [isSeller, setIsSeller] = useState<boolean | null>(null)
   const supabase = createClient()
+  const syncCart = useCartStore((state) => state.syncCart)
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -35,6 +37,13 @@ export function MainNavbar() {
 
     fetchUserRole()
   }, [user?.id, supabase])
+
+  // Sync cart when user logs in
+  useEffect(() => {
+    if (user && !loading) {
+      syncCart()
+    }
+  }, [user, loading, syncCart])
 
   return (
     <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
