@@ -19,8 +19,7 @@ export default function CartPage() {
   const totalPrice = getTotalPrice()
   const totalItems = getTotalItems()
   const shipping = totalPrice > 50 ? 0 : 9.99
-  const tax = totalPrice * 0.15
-  const finalTotal = totalPrice + shipping + tax
+  const finalTotal = totalPrice + shipping
 
   const handleQuantityChange = (id: string, newQuantity: number, priceInfo?: any) => {
     updateQuantity(id, newQuantity, priceInfo)
@@ -220,10 +219,6 @@ export default function CartPage() {
                   <div className="flex justify-between">
                     <span>Shipping</span>
                     <span>{shipping === 0 ? "Free" : `R${shipping.toFixed(2)}`}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tax</span>
-                    <span>R{tax.toFixed(2)}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between font-medium text-lg">

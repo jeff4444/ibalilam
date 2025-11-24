@@ -4,7 +4,7 @@ import crypto from "crypto"
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { amount, itemName, email, firstName, lastName } = body
+    const { amount, itemName, email, firstName, lastName, orderId } = body
 
     // Validate required fields
     if (!amount || !itemName || !email) {
@@ -42,7 +42,10 @@ export async function POST(req: NextRequest) {
       item_name: itemName,
     }
 
-    console.log("PayFast data:", payfastData)
+    // Add order ID as custom field if provided
+    if (orderId) {
+      payfastData.custom_str1 = orderId
+    }
 
     // Generate signature
     const signature = generateSignature(payfastData, passphrase)

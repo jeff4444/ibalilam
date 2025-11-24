@@ -46,7 +46,7 @@ export default function PaymentSuccessPage() {
 
             <div className="space-y-3">
               <Button asChild className="w-full" size="lg">
-                <Link href="/dashboard">
+                <Link href="/orders">
                   View Order Status
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>

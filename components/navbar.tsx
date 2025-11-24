@@ -60,6 +60,9 @@ export function MainNavbar() {
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
               Favorites
             </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/orders">
+              Orders
+            </Link>
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
               Messages
             </Link>

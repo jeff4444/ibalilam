@@ -2,9 +2,9 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Cpu, CreditCard, Truck, Shield, ArrowLeft, Check } from "lucide-react"
+import { Cpu, CreditCard, Truck, Shield, ArrowLeft, Check, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,6 +18,21 @@ import { MainNavbar } from "@/components/navbar"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
 
+interface ShippingAddress {
+  id: string
+  label: string | null
+  first_name: string
+  last_name: string
+  address: string
+  city: string
+  state: string
+  zip_code: string
+  country: string
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
 export default function CheckoutPage() {
   const { toast } = useToast()
   const { user, loading: authLoading } = useAuth()
@@ -28,6 +43,9 @@ export default function CheckoutPage() {
   const payfastFormRef = useRef<HTMLFormElement>(null)
   const [payfastData, setPayfastData] = useState<Record<string, string> | null>(null)
   const [payfastUrl, setPayfastUrl] = useState<string>("")
+  const [savedAddresses, setSavedAddresses] = useState<ShippingAddress[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false)
   const [formData, setFormData] = useState({
     email: "",
     firstName: "",
@@ -43,11 +61,117 @@ export default function CheckoutPage() {
   const totalPrice = getTotalPrice()
   const totalItems = getTotalItems()
   const shippingCost = shippingMethod === "express" ? 19.99 : totalPrice > 50 ? 0 : 9.99
-  const tax = totalPrice * 0.15
-  const finalTotal = totalPrice + shippingCost + tax
+  const finalTotal = totalPrice + shippingCost
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    // Clear selected address when user manually edits form
+    if (selectedAddressId && field !== "saveInfo") {
+      setSelectedAddressId(null)
+    }
+  }
+
+  // Load saved addresses for authenticated users
+  const loadSavedAddresses = useCallback(async () => {
+    if (!user) return
+
+    setIsLoadingAddresses(true)
+    try {
+      const response = await fetch("/api/shipping-addresses")
+      if (response.ok) {
+        const data = await response.json()
+        setSavedAddresses(data.addresses || [])
+        
+        // Prefill with default address if available
+        const defaultAddress = data.addresses?.find((addr: ShippingAddress) => addr.is_default)
+        if (defaultAddress) {
+          setSelectedAddressId(defaultAddress.id)
+          setFormData((prev) => ({
+            ...prev,
+            firstName: defaultAddress.first_name,
+            lastName: defaultAddress.last_name,
+            address: defaultAddress.address,
+            city: defaultAddress.city,
+            state: defaultAddress.state,
+            zipCode: defaultAddress.zip_code,
+            country: defaultAddress.country || "ZA",
+          }))
+        }
+      }
+    } catch (error) {
+      console.error("Error loading saved addresses:", error)
+    } finally {
+      setIsLoadingAddresses(false)
+    }
+  }, [user])
+
+  // Handle selecting a saved address
+  const handleSelectAddress = (addressId: string) => {
+    const address = savedAddresses.find((addr) => addr.id === addressId)
+    if (address) {
+      setSelectedAddressId(addressId)
+      setFormData((prev) => ({
+        ...prev,
+        firstName: address.first_name,
+        lastName: address.last_name,
+        address: address.address,
+        city: address.city,
+        state: address.state,
+        zipCode: address.zip_code,
+        country: address.country || "ZA",
+      }))
+    }
+  }
+
+  // Save shipping address after order creation
+  const saveShippingAddress = async () => {
+    if (!user || !formData.saveInfo) return
+
+    try {
+      const addressData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zipCode: formData.zipCode,
+        country: formData.country,
+        isDefault: savedAddresses.length === 0, // Set as default if it's the first address
+      }
+
+      // Check if we're updating an existing address
+      if (selectedAddressId) {
+        const response = await fetch("/api/shipping-addresses", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: selectedAddressId,
+            ...addressData,
+          }),
+        })
+
+        if (!response.ok) {
+          console.error("Failed to update shipping address")
+        }
+      } else {
+        // Create new address
+        const response = await fetch("/api/shipping-addresses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(addressData),
+        })
+
+        if (!response.ok) {
+          console.error("Failed to save shipping address")
+        }
+      }
+    } catch (error) {
+      console.error("Error saving shipping address:", error)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -59,7 +183,56 @@ export default function CheckoutPage() {
       const itemNames = items.map(item => `${item.name} (x${item.quantity})`).join(", ")
       const itemName = itemNames.length > 100 ? `${itemNames.substring(0, 97)}...` : itemNames
 
-      // Call API to generate PayFast payment data
+      // First, create the order
+      const orderResponse = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          items: items.map(item => ({
+            part_id: item.id, // item.id is the part_id
+            quantity: item.quantity,
+            tierPrice: item.tierPrice,
+            price: item.price,
+          })),
+          shippingAddress: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            address: formData.address,
+            city: formData.city,
+            state: formData.state,
+            zipCode: formData.zipCode,
+            country: formData.country,
+          },
+          customerEmail: formData.email,
+          customerName: `${formData.firstName} ${formData.lastName}`.trim(),
+          subtotal: totalPrice.toFixed(2),
+          shippingAmount: shippingCost.toFixed(2),
+          taxAmount: "0.00",
+          discountAmount: "0.00",
+          totalAmount: finalTotal.toFixed(2),
+        }),
+      })
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json()
+        throw new Error(errorData.error || "Failed to create order")
+      }
+
+      const orderData = await orderResponse.json()
+      const orderId = orderData.orderId
+
+      if (!orderId) {
+        throw new Error("Order created but no order ID returned")
+      }
+
+      // Save shipping address if checkbox is checked
+      if (formData.saveInfo && user) {
+        await saveShippingAddress()
+      }
+
+      // Call API to generate PayFast payment data with orderId
       const response = await fetch("/api/payfast/generate-payment", {
         method: "POST",
         headers: {
@@ -71,6 +244,7 @@ export default function CheckoutPage() {
           email: formData.email,
           firstName: formData.firstName,
           lastName: formData.lastName,
+          orderId: orderId,
         }),
       })
 
@@ -79,7 +253,7 @@ export default function CheckoutPage() {
       }
 
       const data = await response.json()
-      
+
       // Set PayFast data and URL
       setPayfastData(data.payfastData)
       setPayfastUrl(data.payfastUrl)
@@ -89,7 +263,7 @@ export default function CheckoutPage() {
       console.error("Payment error:", error)
       toast({
         title: "Payment Error",
-        description: "Failed to initiate payment. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to initiate payment. Please try again.",
         variant: "destructive",
       })
       setIsProcessing(false)
@@ -136,6 +310,20 @@ export default function CheckoutPage() {
       setIsCartLoading(false)
     }
   }, [authLoading, user, isSyncing])
+
+  // Prefill email when user loads
+  useEffect(() => {
+    if (user?.email && !formData.email) {
+      setFormData((prev) => ({ ...prev, email: user.email || "" }))
+    }
+  }, [user?.email])
+
+  // Load saved addresses when user is authenticated
+  useEffect(() => {
+    if (user && !authLoading) {
+      loadSavedAddresses()
+    }
+  }, [user, authLoading, loadSavedAddresses])
 
   // Show loading state while cart is being loaded
   if (isCartLoading || authLoading || isSyncing) {
@@ -212,7 +400,51 @@ export default function CheckoutPage() {
 
                   {/* Shipping Address */}
                   <div className="space-y-4">
-                    <h3 className="font-medium">Shipping Address</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium">Shipping Address</h3>
+                      {user && savedAddresses.length > 0 && (
+                        <Select
+                          value={selectedAddressId || "new"}
+                          onValueChange={(value) => {
+                            if (value === "new") {
+                              setSelectedAddressId(null)
+                              setFormData((prev) => ({
+                                ...prev,
+                                firstName: "",
+                                lastName: "",
+                                address: "",
+                                city: "",
+                                state: "",
+                                zipCode: "",
+                                country: "ZA",
+                              }))
+                            } else {
+                              handleSelectAddress(value)
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Select address" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="new">New Address</SelectItem>
+                            {savedAddresses.map((address) => (
+                              <SelectItem key={address.id} value={address.id}>
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="h-4 w-4" />
+                                  <span>
+                                    {address.label || `${address.first_name} ${address.last_name}`}
+                                    {address.is_default && (
+                                      <span className="ml-1 text-xs text-muted-foreground">(Default)</span>
+                                    )}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="firstName">First Name</Label>
@@ -400,10 +632,6 @@ export default function CheckoutPage() {
                   <div className="flex justify-between">
                     <span>Shipping</span>
                     <span>{shippingCost === 0 ? "Free" : `R${shippingCost.toFixed(2)}`}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tax (VAT)</span>
-                    <span>R{tax.toFixed(2)}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between font-medium text-lg">
