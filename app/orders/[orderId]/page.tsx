@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import {
   Package,
   Truck,
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/hooks/use-auth"
 import { MainNavbar } from "@/components/navbar"
+import { useCartStore } from "@/lib/cart-store"
 
 interface OrderItem {
   id: string
@@ -120,7 +121,10 @@ export default function OrderDetailPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const orderId = params.orderId as string
+  const paymentSuccess = searchParams.get("payment_success") === "true"
+  const clearCart = useCartStore((state) => state.clearCart)
 
   const canCancel = order?.status === "pending" && order?.payment_status === "pending"
 
@@ -156,6 +160,13 @@ export default function OrderDetailPage() {
       router.push("/login")
     }
   }, [user, authLoading, router])
+
+  // Clear cart when payment is successful
+  useEffect(() => {
+    if (paymentSuccess) {
+      clearCart()
+    }
+  }, [paymentSuccess, clearCart])
 
   // Load order
   useEffect(() => {
@@ -312,6 +323,16 @@ export default function OrderDetailPage() {
       <MainNavbar />
 
       <div className="flex-1 space-y-6 p-4 md:p-8 max-w-7xl mx-auto w-full">
+        {/* Payment Success Message */}
+        {paymentSuccess && (
+          <Alert className="border-green-200 bg-green-50">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800 font-medium">
+              Thank you for shopping with Techafon! Your payment has been received and your order is being processed.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">

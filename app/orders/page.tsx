@@ -242,9 +242,9 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="flex flex-wrap gap-4">
             {orders.map((order) => (
-              <Card key={order.id} className="hover:shadow-lg transition-shadow">
+              <Card key={order.id} className="hover:shadow-lg transition-shadow flex-1 min-w-[calc(50%-0.5rem)]">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">

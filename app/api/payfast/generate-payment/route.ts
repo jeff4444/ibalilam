@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
     const payfastData: Record<string, string> = {
       merchant_id: merchantId,
       merchant_key: merchantKey,
-      return_url: `${baseUrl}/payment/success`,
-      cancel_url: `${baseUrl}/payment/cancelled`,
+      return_url: orderId ? `${baseUrl}/orders/${orderId}?payment_success=true` : `${baseUrl}/payment/success`,
+      cancel_url: orderId ? `${baseUrl}/payment/cancelled?orderId=${orderId}` : `${baseUrl}/payment/cancelled`,
       notify_url: `${baseUrl}/api/payfast/notify`,
       name_first: firstName || "",
       name_last: lastName || "",

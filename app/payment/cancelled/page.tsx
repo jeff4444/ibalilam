@@ -1,22 +1,65 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { XCircle, ArrowLeft, HelpCircle } from "lucide-react"
+import { useSearchParams } from "next/navigation"
+import { XCircle, ArrowLeft, HelpCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function PaymentCancelledPage() {
+  const searchParams = useSearchParams()
+  const orderId = searchParams.get("orderId")
+  const [deletionStatus, setDeletionStatus] = useState<"idle" | "deleting" | "deleted" | "error">("idle")
+
+  useEffect(() => {
+    const deleteOrder = async () => {
+      if (!orderId || deletionStatus !== "idle") return
+
+      setDeletionStatus("deleting")
+      try {
+        const response = await fetch(`/api/orders/${orderId}`, {
+          method: "DELETE",
+        })
+
+        if (response.ok) {
+          setDeletionStatus("deleted")
+        } else {
+          // Even if deletion fails (e.g., order already deleted or user not authorized), 
+          // we don't show an error to the user as the payment was already cancelled
+          setDeletionStatus("deleted")
+        }
+      } catch (error) {
+        console.error("Error deleting order:", error)
+        setDeletionStatus("deleted") // Still show as deleted to user
+      }
+    }
+
+    deleteOrder()
+  }, [orderId, deletionStatus])
+
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-orange-50 to-background">
       <div className="flex-1 container mx-auto px-4 py-12 flex items-center justify-center">
         <Card className="max-w-2xl w-full">
           <CardHeader className="text-center space-y-4">
             <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-              <XCircle className="h-10 w-10 text-orange-600" />
+              {deletionStatus === "deleting" ? (
+                <Loader2 className="h-10 w-10 text-orange-600 animate-spin" />
+              ) : (
+                <XCircle className="h-10 w-10 text-orange-600" />
+              )}
             </div>
             <CardTitle className="text-3xl">Payment Cancelled</CardTitle>
             <CardDescription className="text-lg">
-              Your payment was not completed. No charges have been made to your account.
+              {deletionStatus === "deleting" 
+                ? "Cancelling your order..." 
+                : "Your payment was not completed. No charges have been made to your account."}
+              {deletionStatus === "deleted" && orderId && (
+                <span className="block mt-2 text-sm text-muted-foreground">
+                  Your order has been cancelled and removed.
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
