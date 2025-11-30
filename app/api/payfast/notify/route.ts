@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
             status: "completed",
             payment_method: "payfast",
             payment_intent_id: paymentId,
-            escrow_status: "released", // Assuming escrow is released immediately for successful payments
+            escrow_status: "held", // Funds held in escrow until order is delivered
             completed_at: new Date().toISOString(),
           })
 
@@ -184,59 +184,71 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Credit shops: Update shop_analytics for each shop
+        // Add funds to locked_balance for each shop (escrow until delivery)
         try {
-          const today = new Date().toISOString().split("T")[0] // Get YYYY-MM-DD format
-          
           for (const [shopId, transactionData] of shopTransactionMap.entries()) {
-            // Check if analytics record exists for today
+            // Get current locked_balance and update it
+            const { data: currentShop, error: fetchShopError } = await supabase
+              .from("shops")
+              .select("locked_balance")
+              .eq("id", shopId)
+              .single()
+
+            if (fetchShopError) {
+              console.error(`Error fetching shop ${shopId}:`, fetchShopError)
+            } else {
+              const currentLockedBalance = parseFloat(currentShop?.locked_balance?.toString() || "0")
+              const newLockedBalance = currentLockedBalance + transactionData.sellerAmount
+
+              const { error: updateError } = await supabase
+                .from("shops")
+                .update({ 
+                  locked_balance: newLockedBalance,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", shopId)
+
+              if (updateError) {
+                console.error(`Error updating locked_balance for shop ${shopId}:`, updateError)
+              }
+            }
+
+            // Also update shop_analytics for order tracking (but not total_sales - that happens on delivery)
+            const today = new Date().toISOString().split("T")[0]
             const { data: existingAnalytics, error: fetchError } = await supabase
               .from("shop_analytics")
-              .select("total_sales, orders_count, sold_listings")
+              .select("orders_count, sold_listings")
               .eq("shop_id", shopId)
               .eq("date", today)
               .single()
 
             if (fetchError && fetchError.code !== "PGRST116") {
-              // PGRST116 is "not found" error, which is expected for new records
               console.error(`Error fetching shop_analytics for shop ${shopId}:`, fetchError)
               continue
             }
 
             if (existingAnalytics) {
-              // Update existing record with incremented values
-              const { error: updateError } = await supabase
+              await supabase
                 .from("shop_analytics")
                 .update({
-                  total_sales: parseFloat(existingAnalytics.total_sales.toString()) + transactionData.sellerAmount,
                   orders_count: (existingAnalytics.orders_count || 0) + 1,
                   sold_listings: (existingAnalytics.sold_listings || 0) + transactionData.itemCount,
                 })
                 .eq("shop_id", shopId)
                 .eq("date", today)
-
-              if (updateError) {
-                console.error(`Error updating shop_analytics for shop ${shopId}:`, updateError)
-              }
             } else {
-              // Insert new record
-              const { error: insertError } = await supabase
+              await supabase
                 .from("shop_analytics")
                 .insert({
                   shop_id: shopId,
                   date: today,
-                  total_sales: transactionData.sellerAmount,
                   orders_count: 1,
                   sold_listings: transactionData.itemCount,
                 })
-
-              if (insertError) {
-                console.error(`Error inserting shop_analytics for shop ${shopId}:`, insertError)
-              }
             }
           }
         } catch (error) {
-          console.error("Error updating shop analytics:", error)
+          console.error("Error updating locked balance:", error)
           // Don't fail the payment notification, just log the error
         }
 

@@ -15,6 +15,8 @@ export interface ShopStats {
   avg_response_time_hours: number
   customer_satisfaction: number
   repeat_customer_rate: number
+  locked_balance: number
+  available_balance: number
 }
 
 export interface Part {
@@ -124,6 +126,8 @@ export function useShop() {
             avg_response_time_hours: 0,
             customer_satisfaction: 0,
             repeat_customer_rate: 0,
+            locked_balance: 0,
+            available_balance: 0,
           })
           setOriginalParts([])
           setRefurbishedParts([])
@@ -160,6 +164,8 @@ export function useShop() {
         avg_response_time_hours: shop.avg_response_time_hours || 0,
         customer_satisfaction: shop.customer_satisfaction || 0,
         repeat_customer_rate: shop.repeat_customer_rate || 0,
+        locked_balance: shop.locked_balance || 0,
+        available_balance: shop.available_balance || 0,
       })
 
       // Get original parts

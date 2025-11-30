@@ -11,6 +11,7 @@ import { useCartStore } from "@/lib/cart-store"
 export function MainNavbar() {
   const { user, loading } = useAuth()
   const [isSeller, setIsSeller] = useState<boolean | null>(null)
+  const [isFicaVerified, setIsFicaVerified] = useState<boolean>(false)
   const supabase = createClient()
   const syncCart = useCartStore((state) => state.syncCart)
 
@@ -18,20 +19,23 @@ export function MainNavbar() {
     const fetchUserRole = async () => {
       if (!user?.id) {
         setIsSeller(null)
+        setIsFicaVerified(false)
         return
       }
 
       try {
         const { data: profile } = await supabase
           .from("user_profiles")
-          .select("user_role")
+          .select("user_role, fica_status")
           .eq("user_id", user.id)
           .single()
 
         setIsSeller(profile?.user_role === "seller")
+        setIsFicaVerified(profile?.fica_status === "verified")
       } catch (error) {
         console.error("Error fetching user role for navbar:", error)
         setIsSeller(null)
+        setIsFicaVerified(false)
       }
     }
 
@@ -66,10 +70,15 @@ export function MainNavbar() {
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
               Messages
             </Link>
-            {isSeller && (
-              <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-                Dashboard
-              </Link>
+            {isSeller && isFicaVerified && (
+              <>
+                <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
+                  Dashboard
+                </Link>
+                <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard/transactions">
+                  Transactions
+                </Link>
+              </>
             )}
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
               Profile

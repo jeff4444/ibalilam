@@ -19,6 +19,8 @@ import {
   TrendingUp,
   RefreshCw,
   X,
+  Wallet,
+  Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -92,29 +94,40 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, router])
 
-  // Check if user is admin and seller
+  // Check if user is admin, seller, and FICA verified
   useEffect(() => {
-    const checkAdminStatus = async () => {
+    const checkUserStatus = async () => {
       if (user?.id) {
         try {
           const { data: profile } = await supabase
             .from("user_profiles")
-            .select("user_role, is_admin")
+            .select("user_role, is_admin, fica_status")
             .eq("user_id", user.id)
             .single()
 
           setIsAdmin(Boolean(profile?.is_admin))
-          setIsSeller(profile?.user_role === "seller")
+          const isSeller = profile?.user_role === "seller"
+          const isFicaVerified = profile?.fica_status === "verified"
+          
+          setIsSeller(isSeller)
+          
+          // Redirect if not a seller or not FICA verified
+          if (!isSeller || !isFicaVerified) {
+            setAccessDenied(true)
+            router.push("/profile")
+          }
         } catch (error) {
-          console.error('Error checking admin status:', error)
+          console.error('Error checking user status:', error)
           setIsAdmin(false)
           setIsSeller(null)
+          setAccessDenied(true)
+          router.push("/profile")
         }
       }
     }
 
-    checkAdminStatus()
-  }, [user?.id, supabase])
+    checkUserStatus()
+  }, [user?.id, supabase, router])
 
   // Redirect non-seller users away from dashboard
   useEffect(() => {
@@ -168,6 +181,25 @@ export default function DashboardPage() {
       return matchesSearch && matchesCategory && matchesStatus && matchesPrice
     })
   }, [originalParts, searchTerm, categoryFilter, statusFilter, priceRange])
+
+  // Combined filtered parts (merging original and refurbished)
+  const filteredAllParts = useMemo(() => {
+    const allParts = [...originalParts, ...refurbishedParts]
+    return allParts.filter(part => {
+      const matchesSearch = searchTerm === "" || 
+        part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        part.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      const matchesCategory = categoryFilter === "" || categoryFilter === "all" || part.category === categoryFilter
+      
+      const matchesStatus = statusFilter === "" || statusFilter === "all" || part.status === statusFilter
+      
+      const matchesPrice = (priceRange.min === "" || part.price >= parseFloat(priceRange.min)) &&
+                         (priceRange.max === "" || part.price <= parseFloat(priceRange.max))
+      
+      return matchesSearch && matchesCategory && matchesStatus && matchesPrice
+    })
+  }, [originalParts, refurbishedParts, searchTerm, categoryFilter, statusFilter, priceRange])
 
   const filteredRefurbishedParts = useMemo(() => {
     return refurbishedParts.filter(part => {
@@ -323,6 +355,12 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
+            <Button asChild variant="outline">
+              <Link href="/dashboard/transactions">
+                <Package className="mr-2 h-4 w-4" />
+                Transactions
+              </Link>
+            </Button>
             <Button
               onClick={refreshData}
               variant="outline"
@@ -343,20 +381,20 @@ export default function DashboardPage() {
 
         {/* Stats Cards */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mb-2">
-          <Card className="border-l-4 border-l-primary">
+          <Card className="border-l-4 border-l-emerald-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Sales
+                Available Balance
               </CardTitle>
               <CardAction>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <TrendingUp className="h-5 w-5 text-primary" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                  <Wallet className="h-5 w-5 text-emerald-500" />
                 </div>
               </CardAction>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
-                R {shopStats?.total_sales?.toLocaleString(
+              <div className="text-3xl font-bold text-emerald-600">
+                R {shopStats?.available_balance?.toLocaleString(
                   undefined,
                   {
                     minimumFractionDigits: 2,
@@ -365,11 +403,37 @@ export default function DashboardPage() {
                 ) || '0.00'}
               </div>
               <p className="text-xs text-muted-foreground">
-                {shopStats?.conversion_rate ? `${shopStats.conversion_rate}% conversion rate` : 'No sales yet'}
+                Ready for withdrawal
               </p>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-chart-2">
+          <Card className="border-l-4 border-l-amber-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Locked Balance
+              </CardTitle>
+              <CardAction>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+                  <Lock className="h-5 w-5 text-amber-500" />
+                </div>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-amber-600">
+                R {shopStats?.locked_balance?.toLocaleString(
+                  undefined,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                ) || '0.00'}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Pending delivery confirmation
+              </p>
+            </CardContent>
+          </Card>
+          {/* <Card className="border-l-4 border-l-chart-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Active Listings
@@ -388,7 +452,7 @@ export default function DashboardPage() {
                 {originalParts.length + refurbishedParts.length} total parts listed
               </p>
             </CardContent>
-          </Card>
+          </Card> */}
           <Card className="border-l-4 border-l-chart-3">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -483,21 +547,15 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="original" className="space-y-4">
+        <Tabs defaultValue="parts" className="space-y-4">
           {/* Top tab navigation */}
           <div className="flex justify-center">
             <TabsList className="inline-flex items-center gap-6 rounded-full bg-muted px-4 py-1 text-muted-foreground">
             <TabsTrigger
-              value="original"
+              value="parts"
               className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
             >
-              Original Parts
-            </TabsTrigger>
-            <TabsTrigger
-              value="refurbished"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
-            >
-              Refurbished Parts
+              Parts
             </TabsTrigger>
             <TabsTrigger
               value="interactions"
@@ -514,11 +572,11 @@ export default function DashboardPage() {
           </TabsList>
           </div>
 
-          {/* Original Parts Tab */}
-          <TabsContent value="original" className="space-y-4">
+          {/* Parts Tab */}
+          <TabsContent value="parts" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl">Your Original Parts Listings</CardTitle>
+                <CardTitle className="text-xl">Your Parts Listings</CardTitle>
                 <CardDescription className="mt-1">
                   Manage your electronic parts inventory and listings
                 </CardDescription>
@@ -585,6 +643,7 @@ export default function DashboardPage() {
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead>Product</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead>Price</TableHead>
                         <TableHead>Stock</TableHead>
@@ -597,27 +656,27 @@ export default function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredOriginalParts.length === 0 ? (
+                      {filteredAllParts.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={10}>
+                          <TableCell colSpan={11}>
                             <div className="flex flex-col items-center justify-center py-12 text-center">
                               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                                 <Package className="h-8 w-8 text-primary" />
                               </div>
                               <h3 className="mb-2 text-lg font-semibold">
-                                {originalParts.length === 0
-                                  ? "No original parts found"
+                                {(originalParts.length + refurbishedParts.length) === 0
+                                  ? "No parts found"
                                   : "No parts match your current filters"}
                               </h3>
                               <p className="mb-4 text-sm text-muted-foreground">
-                                {originalParts.length === 0
+                                {(originalParts.length + refurbishedParts.length) === 0
                                   ? "Get started by adding your first part to the marketplace"
                                   : "Try adjusting your search criteria to see more results"}
                               </p>
                               <Button asChild className="bg-primary hover:bg-primary/90">
                                 <Link href="/sell">
                                   <Plus className="mr-2 h-4 w-4" />
-                                  {originalParts.length === 0
+                                  {(originalParts.length + refurbishedParts.length) === 0
                                     ? "Add your first part"
                                     : "Add a new part"}
                                 </Link>
@@ -626,7 +685,7 @@ export default function DashboardPage() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredOriginalParts.map((part) => (
+                        filteredAllParts.map((part) => (
                           <TableRow key={part.id}>
                             <TableCell className="font-medium">
                               <div className="flex items-center space-x-3">
@@ -639,6 +698,11 @@ export default function DashboardPage() {
                                 />
                                 <span>{part.name}</span>
                               </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={part.part_type === "refurbished" ? "secondary" : "outline"}>
+                                {part.part_type === "refurbished" ? "Refurbished" : "Original"}
+                              </Badge>
                             </TableCell>
                             <TableCell>{part.category}</TableCell>
                             <TableCell>R{part.price.toFixed(2)}</TableCell>
@@ -717,209 +781,6 @@ export default function DashboardPage() {
                     </TableBody>
                   </Table>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Refurbished Parts Tab */}
-          <TabsContent value="refurbished" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Refurbished Parts</CardTitle>
-                <CardDescription>Track your refurbishment projects and their profitability</CardDescription>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="relative flex-1 max-w-sm">
-                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search refurbished parts..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-8"
-                      />
-                    </div>
-                    <Button variant="outline" size="sm" onClick={clearFilters}>
-                      <X className="mr-2 h-4 w-4" />
-                      Clear
-                    </Button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <Label htmlFor="refurb-category-filter">Category</Label>
-                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All categories" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All categories</SelectItem>
-                          {categories.map(category => (
-                            <SelectItem key={category} value={category}>{category}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="refurb-status-filter">Status</Label>
-                      <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All statuses" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All statuses</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                          <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                          <SelectItem value="sold">Sold</SelectItem>
-                          <SelectItem value="draft">Draft</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="refurb-min-price">Min Price</Label>
-                      <Input
-                        id="refurb-min-price"
-                        type="number"
-                        placeholder="0.00"
-                        value={priceRange.min}
-                        onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="refurb-max-price">Max Price</Label>
-                      <Input
-                        id="refurb-max-price"
-                        type="number"
-                        placeholder="1000.00"
-                        value={priceRange.max}
-                        onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Original Condition</TableHead>
-                      <TableHead>Refurbished Condition</TableHead>
-                      <TableHead>Cost</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Profit</TableHead>
-                      <TableHead>Time Spent</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Views</TableHead>
-                      <TableHead>Saves</TableHead>
-                      <TableHead>Chats</TableHead>
-                      <TableHead>MOQ</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRefurbishedParts.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
-                          {refurbishedParts.length === 0 
-                            ? <>No refurbished parts found. <Link href="/sell" className="text-blue-600 hover:underline">Add your first refurbished part</Link></>
-                            : "No parts match your current filters. Try adjusting your search criteria."
-                          }
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredRefurbishedParts.map((part) => (
-                        <TableRow key={part.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center space-x-3">
-                              <Image
-                                src={part.images?.[0] || part.image_url || "/placeholder.svg"}
-                                alt={part.name}
-                                width={40}
-                                height={40}
-                                className="rounded-md"
-                              />
-                              <span>{part.name}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="destructive">{part.original_condition || 'Unknown'}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="default">{part.refurbished_condition || 'Unknown'}</Badge>
-                          </TableCell>
-                          <TableCell>R{part.cost?.toFixed(2) || '0.00'}</TableCell>
-                          <TableCell>R{part.price.toFixed(2)}</TableCell>
-                          <TableCell className="text-green-600 font-medium">
-                            +R{part.profit?.toFixed(2) || '0.00'}
-                          </TableCell>
-                          <TableCell>{part.time_spent_hours ? `${part.time_spent_hours}h` : 'N/A'}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              part.status === "active" ? "default" : 
-                              part.status === "sold" ? "secondary" : 
-                              "destructive"
-                            }>
-                              {part.status === "active" ? "Active" : 
-                               part.status === "sold" ? "Sold" :
-                               part.status === "draft" ? "Draft" : "Inactive"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{part.views}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-1">
-                              <Heart className="h-4 w-4 text-red-500" />
-                              <span>{partInteractions[part.id]?.saves || 0}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-1">
-                              <MessageCircle className="h-4 w-4 text-blue-500" />
-                              <span>{partInteractions[part.id]?.chats || 0}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {part.moq_units || part.moq || 1}
-                            {part.pack_size_units && (
-                              <div className="text-xs text-muted-foreground">
-                                Pack: {part.pack_size_units}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleViewPart(part)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEditPart(part)}>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit Listing
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  className="text-red-600"
-                                  onClick={() => handleDeletePart(part)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1139,56 +1000,6 @@ export default function DashboardPage() {
               </Card>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Orders</CardTitle>
-                <CardDescription>Your latest customer orders and their status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Order ID</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentOrders.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No orders yet. Start selling to see your orders here!
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      recentOrders.map((order) => (
-                        <TableRow key={order.order_id}>
-                          <TableCell className="font-medium">{order.order_number}</TableCell>
-                          <TableCell>{order.customer_name || 'Guest'}</TableCell>
-                          <TableCell>{order.product_name || 'Multiple items'}</TableCell>
-                          <TableCell>R{order.amount.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              order.status === 'shipped' ? 'default' :
-                              order.status === 'delivered' ? 'default' :
-                              order.status === 'processing' ? 'secondary' :
-                              order.status === 'pending' ? 'outline' :
-                              order.status === 'cancelled' ? 'destructive' : 'secondary'
-                            }>
-                              {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </main>

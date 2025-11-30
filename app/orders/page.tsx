@@ -10,11 +10,10 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  Eye,
+  ChevronRight,
   Calendar,
   MapPin,
   CreditCard,
-  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,14 +22,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/use-auth"
 import { MainNavbar } from "@/components/navbar"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 
 interface OrderItem {
   id: string
@@ -86,7 +77,6 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
 
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -258,7 +248,7 @@ export default function OrdersPage() {
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <CardTitle className="text-lg">Order {order.order_number}</CardTitle>
                         <Badge className={getStatusColor(order.status)}>
                           {getStatusIcon(order.status)}
@@ -268,7 +258,7 @@ export default function OrdersPage() {
                           <span className="capitalize">{order.payment_status}</span>
                         </Badge>
                       </div>
-                      <CardDescription className="flex items-center gap-4">
+                      <CardDescription className="flex items-center gap-4 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
                           {formatDate(order.created_at)}
@@ -280,7 +270,7 @@ export default function OrdersPage() {
                       </CardDescription>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold">${order.total_amount.toFixed(2)}</p>
+                      <p className="text-2xl font-bold">R{order.total_amount.toFixed(2)}</p>
                       <p className="text-sm text-muted-foreground">
                         {order.order_items.length} {order.order_items.length === 1 ? "item" : "items"}
                       </p>
@@ -304,10 +294,10 @@ export default function OrdersPage() {
                           <div className="flex-1 min-w-0">
                             <p className="font-medium truncate">{item.parts?.name || "Unknown Part"}</p>
                             <p className="text-sm text-muted-foreground">
-                              Qty: {item.quantity} × ${item.unit_price.toFixed(2)}
+                              Qty: {item.quantity} × R{item.unit_price.toFixed(2)}
                             </p>
                           </div>
-                          <p className="font-medium">${item.total_price.toFixed(2)}</p>
+                          <p className="font-medium">R{item.total_price.toFixed(2)}</p>
                         </div>
                       ))}
                       {order.order_items.length > 3 && (
@@ -323,24 +313,24 @@ export default function OrdersPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <p className="text-muted-foreground">Subtotal</p>
-                        <p className="font-medium">${order.subtotal.toFixed(2)}</p>
+                        <p className="font-medium">R{order.subtotal.toFixed(2)}</p>
                       </div>
                       {order.shipping_amount > 0 && (
                         <div>
                           <p className="text-muted-foreground">Shipping</p>
-                          <p className="font-medium">${order.shipping_amount.toFixed(2)}</p>
+                          <p className="font-medium">R{order.shipping_amount.toFixed(2)}</p>
                         </div>
                       )}
                       {order.tax_amount > 0 && (
                         <div>
                           <p className="text-muted-foreground">Tax</p>
-                          <p className="font-medium">${order.tax_amount.toFixed(2)}</p>
+                          <p className="font-medium">R{order.tax_amount.toFixed(2)}</p>
                         </div>
                       )}
                       {order.discount_amount > 0 && (
                         <div>
                           <p className="text-muted-foreground">Discount</p>
-                          <p className="font-medium text-green-600">-${order.discount_amount.toFixed(2)}</p>
+                          <p className="font-medium text-green-600">-R{order.discount_amount.toFixed(2)}</p>
                         </div>
                       )}
                     </div>
@@ -367,181 +357,16 @@ export default function OrdersPage() {
                     </div>
 
                     {/* View Details Button */}
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => setSelectedOrder(order)}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Order Details
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Order {order.order_number}</DialogTitle>
-                          <DialogDescription>
-                            Placed on {formatDate(order.created_at)}
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-6">
-                          {/* Status */}
-                          <div className="flex items-center gap-2">
-                            <Badge className={getStatusColor(order.status)}>
-                              {getStatusIcon(order.status)}
-                              <span className="ml-1 capitalize">{order.status}</span>
-                            </Badge>
-                            <Badge variant="outline" className={getPaymentStatusColor(order.payment_status)}>
-                              <span className="capitalize">{order.payment_status}</span>
-                            </Badge>
-                          </div>
-
-                          {/* All Order Items */}
-                          <div>
-                            <h3 className="font-semibold mb-3">Order Items</h3>
-                            <div className="space-y-3">
-                              {order.order_items.map((item) => (
-                                <div key={item.id} className="flex items-center gap-4 p-3 border rounded-lg">
-                                  <div className="relative w-20 h-20 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-                                    <Image
-                                      src={item.parts?.image_url || "/placeholder.svg"}
-                                      alt={item.parts?.name || "Part"}
-                                      fill
-                                      className="object-cover"
-                                    />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium">{item.parts?.name || "Unknown Part"}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {item.parts?.category || "N/A"}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                      Quantity: {item.quantity} × ${item.unit_price.toFixed(2)} = ${item.total_price.toFixed(2)}
-                                    </p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-semibold">${item.total_price.toFixed(2)}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          {/* Order Summary */}
-                          <div>
-                            <h3 className="font-semibold mb-3">Order Summary</h3>
-                            <div className="space-y-2">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Subtotal</span>
-                                <span className="font-medium">${order.subtotal.toFixed(2)}</span>
-                              </div>
-                              {order.shipping_amount > 0 && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Shipping</span>
-                                  <span className="font-medium">${order.shipping_amount.toFixed(2)}</span>
-                                </div>
-                              )}
-                              {order.tax_amount > 0 && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Tax</span>
-                                  <span className="font-medium">${order.tax_amount.toFixed(2)}</span>
-                                </div>
-                              )}
-                              {order.discount_amount > 0 && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Discount</span>
-                                  <span className="font-medium text-green-600">-${order.discount_amount.toFixed(2)}</span>
-                                </div>
-                              )}
-                              <Separator />
-                              <div className="flex justify-between text-lg font-bold">
-                                <span>Total</span>
-                                <span>${order.total_amount.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Shipping Address */}
-                          {order.shipping_address && (
-                            <div>
-                              <h3 className="font-semibold mb-3">Shipping Address</h3>
-                              <div className="p-3 border rounded-lg">
-                                <p className="font-medium">
-                                  {order.shipping_address.firstName} {order.shipping_address.lastName}
-                                </p>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  {formatAddress(order.shipping_address)}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Billing Address */}
-                          {order.billing_address && (
-                            <div>
-                              <h3 className="font-semibold mb-3">Billing Address</h3>
-                              <div className="p-3 border rounded-lg">
-                                <p className="font-medium">
-                                  {order.billing_address.firstName} {order.billing_address.lastName}
-                                </p>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                  {formatAddress(order.billing_address)}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Payment Info */}
-                          <div>
-                            <h3 className="font-semibold mb-3">Payment Information</h3>
-                            <div className="p-3 border rounded-lg space-y-1">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Payment Method</span>
-                                <span className="font-medium">{order.payment_method || "N/A"}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Payment Status</span>
-                                <Badge variant="outline" className={getPaymentStatusColor(order.payment_status)}>
-                                  <span className="capitalize">{order.payment_status}</span>
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Timestamps */}
-                          <div>
-                            <h3 className="font-semibold mb-3">Order Timeline</h3>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Order Placed</span>
-                                <span>{formatDate(order.created_at)}</span>
-                              </div>
-                              {order.updated_at && order.updated_at !== order.created_at && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Last Updated</span>
-                                  <span>{formatDate(order.updated_at)}</span>
-                                </div>
-                              )}
-                              {order.shipped_at && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Shipped</span>
-                                  <span>{formatDate(order.shipped_at)}</span>
-                                </div>
-                              )}
-                              {order.delivered_at && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Delivered</span>
-                                  <span>{formatDate(order.delivered_at)}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      asChild
+                    >
+                      <Link href={`/orders/${order.id}`}>
+                        View Order Details
+                        <ChevronRight className="h-4 w-4 ml-2" />
+                      </Link>
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -552,4 +377,3 @@ export default function OrdersPage() {
     </div>
   )
 }
-
