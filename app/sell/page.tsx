@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Upload, X, Plus, Package, DollarSign, Camera, Cpu, Wrench, Smartphone, Laptop, Gamepad2 } from "lucide-react"
+import { Package, DollarSign, Cpu } from "lucide-react"
 import { CartButton } from "@/components/cart-button"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
@@ -19,76 +19,14 @@ import { useFica } from "@/hooks/use-fica"
 import { FicaBadge } from "@/components/fica-badge"
 import { PriceTiersManager } from "@/components/price-tiers-manager"
 import { PartImageUpload } from "@/components/part-image-upload"
+import { CATEGORY_HIERARCHY, DEFAULT_CATEGORY_ICON, type CategoryConfig } from "@/constants/categories"
 
-// Category hierarchy
-const CATEGORY_HIERARCHY = {
-  mobile_phones: {
-    name: "Mobile Phones",
-    icon: Smartphone,
-    subcategories: ["smartphones", "feature_phones"],
-    fields: {
-      brand: { required: true, label: "Brand" },
-      model: { required: true, label: "Model" },
-      storage_capacity: { required: true, label: "Storage Capacity" },
-      imei: { required: true, label: "IMEI Number" },
-      network_status: { required: true, label: "Network Status" },
-      has_box: { required: false, label: "Includes Original Box" },
-      has_charger: { required: false, label: "Includes Charger" }
-    }
-  },
-  phone_parts: {
-    name: "Phone Parts",
-    icon: Wrench,
-    subcategories: ["screen", "battery", "charging_port", "camera", "speaker", "microphone", "housing", "other"],
-    fields: {
-      part_type_detail: { required: true, label: "Part Type" },
-      brand: { required: true, label: "Brand" },
-      model_compatibility: { required: true, label: "Model Compatibility (e.g., Samsung A30)" },
-      moq: { required: false, label: "Minimum Order Quantity" }
-    }
-  },
-  phone_accessories: {
-    name: "Phone Accessories",
-    icon: Package,
-    subcategories: ["charger", "case", "earphones", "screen_protector", "cable", "other"],
-    fields: {
-      accessory_type: { required: true, label: "Accessory Type" },
-      brand: { required: false, label: "Brand" }
-    }
-  },
-  laptops: {
-    name: "Laptops",
-    icon: Laptop,
-    subcategories: ["gaming", "business", "ultrabook", "workstation", "chromebook", "other"],
-    fields: {
-      brand: { required: true, label: "Brand" },
-      model: { required: true, label: "Model" },
-      cpu: { required: true, label: "CPU" },
-      ram: { required: true, label: "RAM" },
-      storage: { required: true, label: "Storage" },
-      screen_size: { required: true, label: "Screen Size" },
-      battery_health: { required: false, label: "Battery Health (%)" }
-    }
-  },
-  steam_kits: {
-    name: "STEAM Kits",
-    icon: Gamepad2,
-    subcategories: ["coding", "robotics", "ai", "electronics", "other"],
-    fields: {
-      kit_type: { required: true, label: "Kit Type" },
-      brand: { required: true, label: "Brand" },
-      age_group: { required: false, label: "Age Group" }
-    }
-  },
-  other_electronics: {
-    name: "Other Electronics",
-    icon: Cpu,
-    subcategories: ["tv", "audio", "gaming", "networking", "power", "other"],
-    fields: {
-      electronics_subcategory: { required: true, label: "Subcategory" },
-      key_specs: { required: false, label: "Key Specifications" }
-    }
-  }
+// Type for category commissions from database
+interface CategoryCommission {
+  id: string
+  category: string
+  commission_percentage: number
+  is_active: boolean
 }
 
 export default function SellPage() {
@@ -96,6 +34,10 @@ export default function SellPage() {
   const { user, loading: authLoading } = useAuth()
   const supabase = createClient()
   const { ficaStatus, canPublishListings } = useFica()
+  
+  // Categories fetched from database
+  const [availableCategories, setAvailableCategories] = useState<CategoryCommission[]>([])
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
   
   // Form data state
   const [formData, setFormData] = useState({
@@ -144,6 +86,36 @@ export default function SellPage() {
   const [priceTiers, setPriceTiers] = useState<Array<{ min_qty: number; unit_price: number }>>([])
   const [success, setSuccess] = useState("")
 
+  // Fetch available categories from database
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        setCategoriesLoading(true)
+        const { data, error } = await supabase
+          .from('category_commissions')
+          .select('*')
+          .eq('is_active', true)
+          .order('category')
+        
+        
+        if (error) {
+          console.error('Error fetching categories:', error)
+          setError('Failed to load categories')
+          return
+        }
+        
+        setAvailableCategories(data || [])
+      } catch (err) {
+        console.error('Error fetching categories:', err)
+        setError('Failed to load categories')
+      } finally {
+        setCategoriesLoading(false)
+      }
+    }
+    
+    fetchCategories()
+  }, [supabase])
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
@@ -163,8 +135,8 @@ export default function SellPage() {
     setImages(newImages)
   }
 
-  // Get current category configuration
-  const currentCategory = formData.category ? CATEGORY_HIERARCHY[formData.category as keyof typeof CATEGORY_HIERARCHY] : null
+  // Get current category configuration from constants
+  const currentCategory: CategoryConfig | null = formData.category ? CATEGORY_HIERARCHY[formData.category] || null : null
 
   // Validate form based on category requirements
   const validateForm = () => {
@@ -477,33 +449,55 @@ export default function SellPage() {
               <CardDescription>Choose the category that best fits your item</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {Object.entries(CATEGORY_HIERARCHY).map(([key, category]) => {
-                  const IconComponent = category.icon
-                  return (
-                    <div 
-                      key={key}
-                      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                        formData.category === key 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => handleInputChange('category', key)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <IconComponent className="h-6 w-6 text-blue-600" />
-                        <div>
-                          <h3 className="font-medium">{category.name}</h3>
-                          <p className="text-sm text-gray-600">
-                            {category.subcategories.slice(0, 2).join(', ')}
-                            {category.subcategories.length > 2 && '...'}
-                          </p>
+              {categoriesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-3 text-muted-foreground">Loading categories...</span>
+                </div>
+              ) : availableCategories.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No categories available. Please contact support.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  {availableCategories.map((categoryCommission) => {
+                    const categoryKey = categoryCommission.category
+                    const categoryConfig = CATEGORY_HIERARCHY[categoryKey]
+                    const IconComponent = categoryConfig?.icon || DEFAULT_CATEGORY_ICON
+                    const categoryName = categoryConfig?.name || categoryKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                    const subcategories = categoryConfig?.subcategories || []
+                    
+                    return (
+                      <div 
+                        key={categoryKey}
+                        className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                          formData.category === categoryKey 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => handleInputChange('category', categoryKey)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <IconComponent className="h-6 w-6 text-blue-600" />
+                          <div>
+                            <h3 className="font-medium">{categoryName}</h3>
+                            <p className="text-sm text-gray-600">
+                              {subcategories.length > 0 ? (
+                                <>
+                                  {subcategories.slice(0, 2).join(', ')}
+                                  {subcategories.length > 2 && '...'}
+                                </>
+                              ) : (
+                                `${categoryCommission.commission_percentage}% commission`
+                              )}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Subcategory Selection */}
               {currentCategory && (

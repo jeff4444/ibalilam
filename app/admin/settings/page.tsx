@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,22 +13,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/utils/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
 import { 
   Settings, 
-  Save, 
   RefreshCw,
-  AlertTriangle,
-  Home,
   DollarSign,
   Shield,
-  ToggleLeft,
   ToggleRight,
   Plus,
   Trash2,
-  Edit
+  CheckCircle,
+  AlertTriangle,
+  Search
 } from 'lucide-react'
-import Link from 'next/link'
 
 interface CategoryCommission {
   id: string
@@ -68,7 +63,7 @@ interface FeatureFlag {
   updated_at: string
 }
 
-export default function AdminConfigPage() {
+export default function AdminSettingsPage() {
   const [categoryCommissions, setCategoryCommissions] = useState<CategoryCommission[]>([])
   const [escrowSettings, setEscrowSettings] = useState<EscrowSettings[]>([])
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings[]>([])
@@ -77,6 +72,7 @@ export default function AdminConfigPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
   
   // Form states
   const [newCommission, setNewCommission] = useState({ category: '', percentage: 0 })
@@ -90,46 +86,26 @@ export default function AdminConfigPage() {
   const [showSettingModal, setShowSettingModal] = useState(false)
   const [showFlagModal, setShowFlagModal] = useState(false)
   
-  const { user } = useAuth()
-  const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) {
-        router.push('/login')
-        return
-      }
+    fetchAllSettings()
+  }, [])
 
-      try {
-        const { data: profile, error } = await supabase
-          .from('user_profiles')
-          .select('user_role, is_admin')
-          .eq('user_id', user.id)
-          .single()
-
-        if (error || !profile || !profile.is_admin) {
-          router.push('/dashboard')
-          return
-        }
-
-        fetchAllSettings()
-      } catch (error) {
-        console.error('Error checking admin status:', error)
-        router.push('/dashboard')
-      }
+  useEffect(() => {
+    if (success || error) {
+      const timer = setTimeout(() => {
+        setSuccess(null)
+        setError(null)
+      }, 3000)
+      return () => clearTimeout(timer)
     }
-
-    if (user) {
-      checkAdminStatus()
-    }
-  }, [user?.id])
+  }, [success, error])
 
   const fetchAllSettings = async () => {
     try {
       setLoading(true)
       
-      // Fetch all settings in parallel
       const [commissionsResult, escrowResult, settingsResult, flagsResult] = await Promise.all([
         supabase.from('category_commissions').select('*').order('category'),
         supabase.from('escrow_settings').select('*').order('category'),
@@ -316,6 +292,7 @@ export default function AdminConfigPage() {
         .eq('id', id)
 
       if (error) throw error
+      setSuccess('Commission deleted')
       fetchAllSettings()
     } catch (err: any) {
       console.error('Error deleting commission:', err)
@@ -332,66 +309,82 @@ export default function AdminConfigPage() {
     'other_electronics'
   ]
 
+  const filteredSettings = globalSettings.filter(s => 
+    s.setting_key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const filteredFlags = featureFlags.filter(f =>
+    f.flag_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p>Loading configuration...</p>
+      <div className="p-6">
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Platform Configuration</h1>
-          <p className="text-muted-foreground">
-            Manage platform settings, commissions, escrow, and feature flags
-          </p>
+          <h1 className="text-3xl font-bold text-white">Settings</h1>
+          <p className="text-slate-400 mt-1">Configure platform settings, commissions, and features</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button asChild variant="secondary">
-            <Link href="/admin">
-              <Home className="mr-2 h-4 w-4" />
-              Admin Dashboard
-            </Link>
-          </Button>
-          <Button onClick={fetchAllSettings} variant="outline">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
+        <Button onClick={fetchAllSettings} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
+      {/* Alerts */}
       {error && (
-        <Alert variant="destructive">
+        <Alert className="bg-red-500/10 border-red-500/30 text-red-400">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
       {success && (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
+        <Alert className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
+          <CheckCircle className="h-4 w-4" />
           <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
 
+      {/* Search */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="pt-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <Input
+              placeholder="Search settings..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Category Commissions */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center">
-                <DollarSign className="mr-2 h-5 w-5" />
+              <CardTitle className="text-white flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-emerald-500" />
                 Category Commissions
               </CardTitle>
-              <CardDescription>Set commission percentages for different categories</CardDescription>
+              <CardDescription className="text-slate-400">Set commission percentages for different categories</CardDescription>
             </div>
-            <Button onClick={() => setShowCommissionModal(true)}>
+            <Button onClick={() => setShowCommissionModal(true)} className="bg-emerald-600 hover:bg-emerald-700">
               <Plus className="mr-2 h-4 w-4" />
               Add Commission
             </Button>
@@ -400,33 +393,34 @@ export default function AdminConfigPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Category</TableHead>
-                <TableHead>Commission %</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Category</TableHead>
+                <TableHead className="text-slate-400">Commission %</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-slate-400">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {categoryCommissions.map((commission) => (
-                <TableRow key={commission.id}>
-                  <TableCell className="font-medium">{commission.category}</TableCell>
-                  <TableCell>{commission.commission_percentage}%</TableCell>
+                <TableRow key={commission.id} className="border-slate-800 hover:bg-slate-800/50">
+                  <TableCell className="text-white capitalize">{commission.category.replace('_', ' ')}</TableCell>
+                  <TableCell className="text-emerald-400 font-semibold">{commission.commission_percentage}%</TableCell>
                   <TableCell>
-                    <Badge variant={commission.is_active ? 'default' : 'secondary'}>
+                    <Badge className={commission.is_active ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-500/20 text-slate-400 border-slate-500/30'}>
                       {commission.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-2">
                       <Switch
                         checked={commission.is_active}
                         onCheckedChange={() => handleToggleCommission(commission.id, commission.is_active)}
                       />
                       <Button
                         size="sm"
-                        variant="destructive"
+                        variant="ghost"
                         onClick={() => handleDeleteCommission(commission.id)}
+                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -440,17 +434,17 @@ export default function AdminConfigPage() {
       </Card>
 
       {/* Escrow Settings */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center">
-                <Shield className="mr-2 h-5 w-5" />
+              <CardTitle className="text-white flex items-center gap-2">
+                <Shield className="h-5 w-5 text-blue-500" />
                 Escrow Settings
               </CardTitle>
-              <CardDescription>Configure escrow requirements by category</CardDescription>
+              <CardDescription className="text-slate-400">Configure escrow requirements by category</CardDescription>
             </div>
-            <Button onClick={() => setShowEscrowModal(true)}>
+            <Button onClick={() => setShowEscrowModal(true)} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="mr-2 h-4 w-4" />
               Add Escrow Setting
             </Button>
@@ -459,23 +453,23 @@ export default function AdminConfigPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Category</TableHead>
-                <TableHead>Escrow Required</TableHead>
-                <TableHead>Duration (days)</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Category</TableHead>
+                <TableHead className="text-slate-400">Escrow Required</TableHead>
+                <TableHead className="text-slate-400">Duration (days)</TableHead>
+                <TableHead className="text-slate-400">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {escrowSettings.map((escrow) => (
-                <TableRow key={escrow.id}>
-                  <TableCell className="font-medium">{escrow.category}</TableCell>
+                <TableRow key={escrow.id} className="border-slate-800 hover:bg-slate-800/50">
+                  <TableCell className="text-white capitalize">{escrow.category.replace('_', ' ')}</TableCell>
                   <TableCell>
-                    <Badge variant={escrow.escrow_required ? 'default' : 'secondary'}>
+                    <Badge className={escrow.escrow_required ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-500/20 text-slate-400 border-slate-500/30'}>
                       {escrow.escrow_required ? 'Required' : 'Optional'}
                     </Badge>
                   </TableCell>
-                  <TableCell>{escrow.escrow_duration_days} days</TableCell>
+                  <TableCell className="text-slate-300">{escrow.escrow_duration_days} days</TableCell>
                   <TableCell>
                     <Switch
                       checked={escrow.escrow_required}
@@ -490,17 +484,17 @@ export default function AdminConfigPage() {
       </Card>
 
       {/* Global Settings */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center">
-                <Settings className="mr-2 h-5 w-5" />
+              <CardTitle className="text-white flex items-center gap-2">
+                <Settings className="h-5 w-5 text-purple-500" />
                 Global Settings
               </CardTitle>
-              <CardDescription>Platform-wide configuration settings</CardDescription>
+              <CardDescription className="text-slate-400">Platform-wide configuration settings</CardDescription>
             </div>
-            <Button onClick={() => setShowSettingModal(true)}>
+            <Button onClick={() => setShowSettingModal(true)} className="bg-purple-600 hover:bg-purple-700">
               <Plus className="mr-2 h-4 w-4" />
               Add Setting
             </Button>
@@ -509,22 +503,22 @@ export default function AdminConfigPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Setting Key</TableHead>
-                <TableHead>Value</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Description</TableHead>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Setting Key</TableHead>
+                <TableHead className="text-slate-400">Value</TableHead>
+                <TableHead className="text-slate-400">Type</TableHead>
+                <TableHead className="text-slate-400">Description</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {globalSettings.map((setting) => (
-                <TableRow key={setting.id}>
-                  <TableCell className="font-medium">{setting.setting_key}</TableCell>
-                  <TableCell>{setting.setting_value}</TableCell>
+              {filteredSettings.map((setting) => (
+                <TableRow key={setting.id} className="border-slate-800 hover:bg-slate-800/50">
+                  <TableCell className="text-white font-mono text-sm">{setting.setting_key}</TableCell>
+                  <TableCell className="text-emerald-400">{setting.setting_value}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{setting.setting_type}</Badge>
+                    <Badge variant="outline" className="border-slate-600 text-slate-300">{setting.setting_type}</Badge>
                   </TableCell>
-                  <TableCell>{setting.description}</TableCell>
+                  <TableCell className="text-slate-400 text-sm max-w-xs truncate">{setting.description}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -533,17 +527,17 @@ export default function AdminConfigPage() {
       </Card>
 
       {/* Feature Flags */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center">
-                <ToggleRight className="mr-2 h-5 w-5" />
+              <CardTitle className="text-white flex items-center gap-2">
+                <ToggleRight className="h-5 w-5 text-yellow-500" />
                 Feature Flags
               </CardTitle>
-              <CardDescription>Enable or disable platform features</CardDescription>
+              <CardDescription className="text-slate-400">Enable or disable platform features</CardDescription>
             </div>
-            <Button onClick={() => setShowFlagModal(true)}>
+            <Button onClick={() => setShowFlagModal(true)} className="bg-yellow-600 hover:bg-yellow-700">
               <Plus className="mr-2 h-4 w-4" />
               Add Feature Flag
             </Button>
@@ -552,23 +546,23 @@ export default function AdminConfigPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Flag Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Flag Name</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-slate-400">Description</TableHead>
+                <TableHead className="text-slate-400">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {featureFlags.map((flag) => (
-                <TableRow key={flag.id}>
-                  <TableCell className="font-medium">{flag.flag_name}</TableCell>
+              {filteredFlags.map((flag) => (
+                <TableRow key={flag.id} className="border-slate-800 hover:bg-slate-800/50">
+                  <TableCell className="text-white font-mono text-sm">{flag.flag_name}</TableCell>
                   <TableCell>
-                    <Badge variant={flag.flag_value ? 'default' : 'secondary'}>
+                    <Badge className={flag.flag_value ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}>
                       {flag.flag_value ? 'Enabled' : 'Disabled'}
                     </Badge>
                   </TableCell>
-                  <TableCell>{flag.description}</TableCell>
+                  <TableCell className="text-slate-400 text-sm max-w-xs truncate">{flag.description}</TableCell>
                   <TableCell>
                     <Switch
                       checked={flag.flag_value}
@@ -584,27 +578,27 @@ export default function AdminConfigPage() {
 
       {/* Commission Modal */}
       <Dialog open={showCommissionModal} onOpenChange={setShowCommissionModal}>
-        <DialogContent>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>Add Category Commission</DialogTitle>
-            <DialogDescription>Set commission percentage for a category</DialogDescription>
+            <DialogDescription className="text-slate-400">Set commission percentage for a category</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="category">Category</Label>
+              <Label htmlFor="category" className="text-slate-400">Category</Label>
               <Select value={newCommission.category} onValueChange={(value) => setNewCommission(prev => ({ ...prev, category: value }))}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white mt-1">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-slate-800 border-slate-700">
                   {categories.map(category => (
-                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                    <SelectItem key={category} value={category}>{category.replace('_', ' ')}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="percentage">Commission Percentage</Label>
+              <Label htmlFor="percentage" className="text-slate-400">Commission Percentage</Label>
               <Input
                 id="percentage"
                 type="number"
@@ -614,13 +608,14 @@ export default function AdminConfigPage() {
                 value={newCommission.percentage}
                 onChange={(e) => setNewCommission(prev => ({ ...prev, percentage: parseFloat(e.target.value) }))}
                 placeholder="5.0"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowCommissionModal(false)}>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowCommissionModal(false)} className="border-slate-700 text-slate-300">
                 Cancel
               </Button>
-              <Button onClick={handleSaveCommission} disabled={saving || !newCommission.category || newCommission.percentage <= 0}>
+              <Button onClick={handleSaveCommission} disabled={saving || !newCommission.category || newCommission.percentage <= 0} className="bg-emerald-600 hover:bg-emerald-700">
                 {saving ? 'Saving...' : 'Save Commission'}
               </Button>
             </div>
@@ -630,34 +625,34 @@ export default function AdminConfigPage() {
 
       {/* Escrow Modal */}
       <Dialog open={showEscrowModal} onOpenChange={setShowEscrowModal}>
-        <DialogContent>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>Add Escrow Setting</DialogTitle>
-            <DialogDescription>Configure escrow requirements for a category</DialogDescription>
+            <DialogDescription className="text-slate-400">Configure escrow requirements for a category</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="escrow-category">Category</Label>
+              <Label htmlFor="escrow-category" className="text-slate-400">Category</Label>
               <Select value={newEscrow.category} onValueChange={(value) => setNewEscrow(prev => ({ ...prev, category: value }))}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white mt-1">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-slate-800 border-slate-700">
                   {categories.map(category => (
-                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                    <SelectItem key={category} value={category}>{category.replace('_', ' ')}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
               <Switch
                 checked={newEscrow.required}
                 onCheckedChange={(checked) => setNewEscrow(prev => ({ ...prev, required: checked }))}
               />
-              <Label>Escrow Required</Label>
+              <Label className="text-slate-400">Escrow Required</Label>
             </div>
             <div>
-              <Label htmlFor="duration">Escrow Duration (days)</Label>
+              <Label htmlFor="duration" className="text-slate-400">Escrow Duration (days)</Label>
               <Input
                 id="duration"
                 type="number"
@@ -666,13 +661,14 @@ export default function AdminConfigPage() {
                 value={newEscrow.duration}
                 onChange={(e) => setNewEscrow(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
                 placeholder="7"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowEscrowModal(false)}>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowEscrowModal(false)} className="border-slate-700 text-slate-300">
                 Cancel
               </Button>
-              <Button onClick={handleSaveEscrow} disabled={saving || !newEscrow.category}>
+              <Button onClick={handleSaveEscrow} disabled={saving || !newEscrow.category} className="bg-blue-600 hover:bg-blue-700">
                 {saving ? 'Saving...' : 'Save Escrow Setting'}
               </Button>
             </div>
@@ -682,37 +678,39 @@ export default function AdminConfigPage() {
 
       {/* Setting Modal */}
       <Dialog open={showSettingModal} onOpenChange={setShowSettingModal}>
-        <DialogContent>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>Add Global Setting</DialogTitle>
-            <DialogDescription>Add a new platform-wide setting</DialogDescription>
+            <DialogDescription className="text-slate-400">Add a new platform-wide setting</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="setting-key">Setting Key</Label>
+              <Label htmlFor="setting-key" className="text-slate-400">Setting Key</Label>
               <Input
                 id="setting-key"
                 value={newSetting.key}
                 onChange={(e) => setNewSetting(prev => ({ ...prev, key: e.target.value }))}
                 placeholder="moq_floor_screens"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="setting-value">Value</Label>
+              <Label htmlFor="setting-value" className="text-slate-400">Value</Label>
               <Input
                 id="setting-value"
                 value={newSetting.value}
                 onChange={(e) => setNewSetting(prev => ({ ...prev, value: e.target.value }))}
                 placeholder="10"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="setting-type">Type</Label>
+              <Label htmlFor="setting-type" className="text-slate-400">Type</Label>
               <Select value={newSetting.type} onValueChange={(value) => setNewSetting(prev => ({ ...prev, type: value as any }))}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white mt-1">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-slate-800 border-slate-700">
                   <SelectItem value="string">String</SelectItem>
                   <SelectItem value="number">Number</SelectItem>
                   <SelectItem value="boolean">Boolean</SelectItem>
@@ -721,19 +719,20 @@ export default function AdminConfigPage() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="setting-description">Description</Label>
+              <Label htmlFor="setting-description" className="text-slate-400">Description</Label>
               <Textarea
                 id="setting-description"
                 value={newSetting.description}
                 onChange={(e) => setNewSetting(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Minimum order quantity floor for screen parts"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowSettingModal(false)}>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowSettingModal(false)} className="border-slate-700 text-slate-300">
                 Cancel
               </Button>
-              <Button onClick={handleSaveSetting} disabled={saving || !newSetting.key || !newSetting.value}>
+              <Button onClick={handleSaveSetting} disabled={saving || !newSetting.key || !newSetting.value} className="bg-purple-600 hover:bg-purple-700">
                 {saving ? 'Saving...' : 'Save Setting'}
               </Button>
             </div>
@@ -743,42 +742,44 @@ export default function AdminConfigPage() {
 
       {/* Flag Modal */}
       <Dialog open={showFlagModal} onOpenChange={setShowFlagModal}>
-        <DialogContent>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>Add Feature Flag</DialogTitle>
-            <DialogDescription>Add a new feature flag to control platform functionality</DialogDescription>
+            <DialogDescription className="text-slate-400">Add a new feature flag to control platform functionality</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="flag-name">Flag Name</Label>
+              <Label htmlFor="flag-name" className="text-slate-400">Flag Name</Label>
               <Input
                 id="flag-name"
                 value={newFlag.name}
                 onChange={(e) => setNewFlag(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="enable_chat_feature"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
               <Switch
                 checked={newFlag.value}
                 onCheckedChange={(checked) => setNewFlag(prev => ({ ...prev, value: checked }))}
               />
-              <Label>Enabled by default</Label>
+              <Label className="text-slate-400">Enabled by default</Label>
             </div>
             <div>
-              <Label htmlFor="flag-description">Description</Label>
+              <Label htmlFor="flag-description" className="text-slate-400">Description</Label>
               <Textarea
                 id="flag-description"
                 value={newFlag.description}
                 onChange={(e) => setNewFlag(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Enable real-time chat between buyers and sellers"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
               />
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowFlagModal(false)}>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowFlagModal(false)} className="border-slate-700 text-slate-300">
                 Cancel
               </Button>
-              <Button onClick={handleSaveFlag} disabled={saving || !newFlag.name}>
+              <Button onClick={handleSaveFlag} disabled={saving || !newFlag.name} className="bg-yellow-600 hover:bg-yellow-700">
                 {saving ? 'Saving...' : 'Save Feature Flag'}
               </Button>
             </div>
@@ -788,3 +789,4 @@ export default function AdminConfigPage() {
     </div>
   )
 }
+

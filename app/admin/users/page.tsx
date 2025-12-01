@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,179 +10,93 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/utils/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
 import { 
   Users, 
   Search, 
-  Shield, 
   UserCheck, 
   UserX, 
-  FileText, 
   Eye, 
   Clock,
   CheckCircle,
   XCircle,
-  AlertTriangle,
-  Home,
-  Filter,
-  MoreHorizontal
+  MoreHorizontal,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Shield
 } from 'lucide-react'
-import Link from 'next/link'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface User {
   id: string
-  email: string
   full_name: string
   user_role: 'visitor' | 'buyer' | 'seller'
   is_admin: boolean
   fica_status: 'pending' | 'verified' | 'rejected' | null
   fica_rejection_reason?: string
   fica_verified_at?: string
-  fica_reviewed_at?: string
   created_at: string
-  last_sign_in_at?: string
   is_suspended: boolean
   suspension_reason?: string
   suspension_until?: string
 }
 
-interface AuditLog {
-  id: string
-  user_id: string
-  action: string
-  performed_by: string
-  reason?: string
-  created_at: string
-  performer_name?: string
-  user_name?: string
+interface Pagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
 }
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([])
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [ficaFilter, setFicaFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 0 })
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [showUserModal, setShowUserModal] = useState(false)
   const [showFicaModal, setShowFicaModal] = useState(false)
-  const [showAuditModal, setShowAuditModal] = useState(false)
   const [ficaAction, setFicaAction] = useState<'approve' | 'reject'>('approve')
   const [rejectionReason, setRejectionReason] = useState('')
   const [suspensionReason, setSuspensionReason] = useState('')
   const [suspensionDays, setSuspensionDays] = useState(7)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   
-  const { user } = useAuth()
-  const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) {
-        router.push('/login')
-        return
-      }
-
-      try {
-        const { data: profile, error } = await supabase
-          .from('user_profiles')
-          .select('user_role, is_admin')
-          .eq('user_id', user.id)
-          .single()
-
-        if (error || !profile || !profile.is_admin) {
-          router.push('/dashboard')
-          return
-        }
-
-        fetchUsers()
-        fetchAuditLogs()
-      } catch (error) {
-        console.error('Error checking admin status:', error)
-        router.push('/dashboard')
-      }
-    }
-
-    if (user) {
-      checkAdminStatus()
-    }
-  }, [user?.id])
+    fetchUsers()
+  }, [searchTerm, roleFilter, ficaFilter, statusFilter, pagination.page])
 
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('created_at', { ascending: false })
+      
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString()
+      })
+      
+      if (searchTerm) params.set('search', searchTerm)
+      if (roleFilter !== 'all') params.set('role', roleFilter)
+      if (ficaFilter !== 'all') params.set('fica_status', ficaFilter)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
 
-      if (error) throw error
-
-      const allowedRoles: User['user_role'][] = ['visitor', 'buyer', 'seller']
-
-      const transformedUsers = data?.map(profile => {
-        const role = allowedRoles.includes(profile.user_role)
-          ? (profile.user_role as User['user_role'])
-          : 'visitor'
-
-        return {
-          id: profile.user_id,
-          email: '', // We can't access auth.users email directly
-          full_name: profile.full_name || (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : (profile.first_name || profile.last_name || '')),
-          user_role: role,
-          is_admin: Boolean(profile.is_admin),
-          fica_status: profile.fica_status,
-          fica_rejection_reason: profile.fica_rejection_reason,
-          fica_verified_at: profile.fica_verified_at,
-          fica_reviewed_at: profile.fica_reviewed_at,
-          created_at: profile.created_at,
-          last_sign_in_at: undefined, // We can't access this directly
-          is_suspended: profile.is_suspended || false,
-          suspension_reason: profile.suspension_reason,
-          suspension_until: profile.suspension_until
-        }
-      }) || []
-
-      setUsers(transformedUsers)
-    } catch (err: any) {
-      console.error('Error fetching users:', err)
-      setError(err.message)
+      const response = await fetch(`/api/admin/users?${params}`)
+      const data = await response.json()
+      
+      if (response.ok) {
+        setUsers(data.users)
+        setPagination(prev => ({ ...prev, ...data.pagination }))
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchAuditLogs = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('fica_audit_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (error) throw error
-
-      const transformedLogs = data?.map(log => ({
-        id: log.id,
-        user_id: log.user_id,
-        action: log.action,
-        performed_by: log.performed_by,
-        reason: log.reason,
-        created_at: log.created_at,
-        performer_name: 'Unknown', // We can't access user profile data directly
-        user_name: 'Unknown' // We can't access user profile data directly
-      })) || []
-
-      setAuditLogs(transformedLogs)
-    } catch (err: any) {
-      console.error('Error fetching audit logs:', err)
     }
   }
 
@@ -192,45 +105,25 @@ export default function AdminUsersPage() {
 
     try {
       setIsProcessing(true)
-      setError(null)
 
-      const updateData: any = {
-        fica_status: ficaAction === 'approve' ? 'verified' : 'rejected',
-        fica_reviewed_at: new Date().toISOString(),
-        fica_reviewed_by: user?.id
-      }
-
-      if (ficaAction === 'reject') {
-        updateData.fica_rejection_reason = rejectionReason
-      } else if (ficaAction === 'approve') {
-        updateData.fica_verified_at = new Date().toISOString()
-      }
-
-      const { error } = await supabase
-        .from('user_profiles')
-        .update(updateData)
-        .eq('user_id', selectedUser.id)
-
-      if (error) throw error
-
-      // Log the action
-      await supabase
-        .from('fica_audit_log')
-        .insert({
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           user_id: selectedUser.id,
-          action: ficaAction === 'approve' ? 'approved' : 'rejected',
-          performed_by: user?.id,
-          reason: ficaAction === 'reject' ? rejectionReason : null
+          action: ficaAction === 'approve' ? 'approve_fica' : 'reject_fica',
+          rejection_reason: rejectionReason
         })
+      })
 
-      setShowFicaModal(false)
-      setSelectedUser(null)
-      setRejectionReason('')
-      fetchUsers()
-      fetchAuditLogs()
-    } catch (err: any) {
-      console.error('Error processing FICA action:', err)
-      setError(err.message)
+      if (response.ok) {
+        setShowFicaModal(false)
+        setSelectedUser(null)
+        setRejectionReason('')
+        fetchUsers()
+      }
+    } catch (error) {
+      console.error('Error processing FICA action:', error)
     } finally {
       setIsProcessing(false)
     }
@@ -241,29 +134,29 @@ export default function AdminUsersPage() {
 
     try {
       setIsProcessing(true)
-      setError(null)
 
       const suspensionUntil = new Date()
       suspensionUntil.setDate(suspensionUntil.getDate() + suspensionDays)
 
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          is_suspended: true,
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: selectedUser.id,
+          action: 'suspend',
           suspension_reason: suspensionReason,
           suspension_until: suspensionUntil.toISOString()
         })
-        .eq('user_id', selectedUser.id)
+      })
 
-      if (error) throw error
-
-      setShowUserModal(false)
-      setSelectedUser(null)
-      setSuspensionReason('')
-      fetchUsers()
-    } catch (err: any) {
-      console.error('Error suspending user:', err)
-      setError(err.message)
+      if (response.ok) {
+        setShowUserModal(false)
+        setSelectedUser(null)
+        setSuspensionReason('')
+        fetchUsers()
+      }
+    } catch (error) {
+      console.error('Error suspending user:', error)
     } finally {
       setIsProcessing(false)
     }
@@ -272,194 +165,147 @@ export default function AdminUsersPage() {
   const handleUnsuspendUser = async (userId: string) => {
     try {
       setIsProcessing(true)
-      setError(null)
 
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          is_suspended: false,
-          suspension_reason: null,
-          suspension_until: null
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          action: 'unsuspend'
         })
-        .eq('user_id', userId)
+      })
 
-      if (error) throw error
-
-      fetchUsers()
-    } catch (err: any) {
-      console.error('Error unsuspending user:', err)
-      setError(err.message)
+      if (response.ok) {
+        fetchUsers()
+      }
+    } catch (error) {
+      console.error('Error unsuspending user:', error)
     } finally {
       setIsProcessing(false)
     }
   }
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = searchTerm === '' || 
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.full_name.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesRole = roleFilter === 'all' ||
-      (roleFilter === 'admin' ? user.is_admin : user.user_role === roleFilter)
-    const matchesFica = ficaFilter === 'all' || user.fica_status === ficaFilter
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'suspended' && user.is_suspended) ||
-      (statusFilter === 'active' && !user.is_suspended)
-
-    return matchesSearch && matchesRole && matchesFica && matchesStatus
-  })
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p>Loading users...</p>
-        </div>
-      </div>
-    )
+  const getFicaStatusBadge = (status: string | null) => {
+    switch (status) {
+      case 'verified':
+        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Verified</Badge>
+      case 'pending':
+        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Pending</Badge>
+      case 'rejected':
+        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Rejected</Badge>
+      default:
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">Not Submitted</Badge>
+    }
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">User Management</h1>
-          <p className="text-muted-foreground">
-            Manage users, FICA verification, and account status
-          </p>
+          <h1 className="text-3xl font-bold text-white">Users</h1>
+          <p className="text-slate-400 mt-1">Manage platform users and their accounts</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button asChild variant="secondary">
-            <Link href="/admin">
-              <Home className="mr-2 h-4 w-4" />
-              Admin Dashboard
-            </Link>
-          </Button>
-          <Button onClick={() => setShowAuditModal(true)} variant="outline">
-            <FileText className="mr-2 h-4 w-4" />
-            Audit Logs
-          </Button>
-        </div>
+        <Button onClick={fetchUsers} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Registered users
-            </p>
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Users className="h-8 w-8 text-slate-400" />
+              <div>
+                <p className="text-2xl font-bold text-white">{pagination.total}</p>
+                <p className="text-sm text-slate-400">Total Users</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending FICA</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.fica_status === 'pending').length}
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Clock className="h-8 w-8 text-yellow-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{users.filter(u => u.fica_status === 'pending').length}</p>
+                <p className="text-sm text-slate-400">Pending FICA</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Awaiting review
-            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Verified Sellers</CardTitle>
-            <UserCheck className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.user_role === 'seller' && u.fica_status === 'verified').length}
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <CheckCircle className="h-8 w-8 text-emerald-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{users.filter(u => u.fica_status === 'verified').length}</p>
+                <p className="text-sm text-slate-400">Verified</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Can sell on platform
-            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Suspended Users</CardTitle>
-            <UserX className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {users.filter(u => u.is_suspended).length}
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <UserX className="h-8 w-8 text-red-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{users.filter(u => u.is_suspended).length}</p>
+                <p className="text-sm text-slate-400">Suspended</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Account restrictions
-            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>User Search & Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <Input
                 placeholder="Search users..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8"
+                className="pl-9 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
             
             <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                 <SelectValue placeholder="All roles" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="visitor">Visitor</SelectItem>
                 <SelectItem value="buyer">Buyer</SelectItem>
                 <SelectItem value="seller">Seller</SelectItem>
-                <SelectItem value="admin">Admins</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={ficaFilter} onValueChange={setFicaFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="FICA status" />
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                <SelectValue placeholder="FICA Status" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All FICA status</SelectItem>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">All FICA Status</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="verified">Verified</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="null">Not submitted</SelectItem>
+                <SelectItem value="null">Not Submitted</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Account status" />
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                <SelectValue placeholder="Account Status" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="suspended">Suspended</SelectItem>
               </SelectContent>
@@ -469,189 +315,224 @@ export default function AdminUsersPage() {
       </Card>
 
       {/* Users Table */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle>Users ({filteredUsers.length})</CardTitle>
-          <CardDescription>Manage user accounts and permissions</CardDescription>
+          <CardTitle className="text-white">Users ({pagination.total})</CardTitle>
+          <CardDescription className="text-slate-400">Manage user accounts and permissions</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>FICA Status</TableHead>
-                <TableHead>Account Status</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead>Last Sign In</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{user.full_name || 'No name'}</div>
-                      <div className="text-sm text-muted-foreground">{user.email}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{user.user_role}</Badge>
-                      {user.is_admin && <Badge variant="secondary">Admin</Badge>}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={
-                      user.fica_status === 'verified' ? 'default' :
-                      user.fica_status === 'pending' ? 'secondary' :
-                      user.fica_status === 'rejected' ? 'destructive' : 'outline'
-                    }>
-                      {user.fica_status === 'verified' ? 'Verified' :
-                       user.fica_status === 'pending' ? 'Pending' :
-                       user.fica_status === 'rejected' ? 'Rejected' : 'Not submitted'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {user.is_suspended ? (
-                      <Badge variant="destructive">Suspended</Badge>
-                    ) : (
-                      <Badge variant="default">Active</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : 'Never'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => {
-                          setSelectedUser(user)
-                          setShowUserModal(true)
-                        }}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          View Details
-                        </DropdownMenuItem>
-                        {user.fica_status === 'pending' && (
-                          <>
-                            <DropdownMenuItem onClick={() => {
-                              setSelectedUser(user)
-                              setFicaAction('approve')
-                              setShowFicaModal(true)
-                            }}>
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              Approve FICA
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                              setSelectedUser(user)
-                              setFicaAction('reject')
-                              setShowFicaModal(true)
-                            }}>
-                              <XCircle className="mr-2 h-4 w-4" />
-                              Reject FICA
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                        {!user.is_suspended ? (
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedUser(user)
-                            setShowUserModal(true)
-                          }}>
-                            <UserX className="mr-2 h-4 w-4" />
-                            Suspend User
-                          </DropdownMenuItem>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-slate-800 hover:bg-transparent">
+                    <TableHead className="text-slate-400">User</TableHead>
+                    <TableHead className="text-slate-400">Role</TableHead>
+                    <TableHead className="text-slate-400">FICA Status</TableHead>
+                    <TableHead className="text-slate-400">Account Status</TableHead>
+                    <TableHead className="text-slate-400">Joined</TableHead>
+                    <TableHead className="text-slate-400 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id} className="border-slate-800 hover:bg-slate-800/50">
+                      <TableCell>
+                        <div>
+                          <div className="font-medium text-white">{user.full_name || 'No name'}</div>
+                          <div className="text-sm text-slate-500">{user.id.slice(0, 8)}...</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="border-slate-600 text-slate-300">
+                            {user.user_role}
+                          </Badge>
+                          {user.is_admin && (
+                            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                              <Shield className="h-3 w-3 mr-1" />
+                              Admin
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {getFicaStatusBadge(user.fica_status)}
+                      </TableCell>
+                      <TableCell>
+                        {user.is_suspended ? (
+                          <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Suspended</Badge>
                         ) : (
-                          <DropdownMenuItem onClick={() => handleUnsuspendUser(user.id)}>
-                            <UserCheck className="mr-2 h-4 w-4" />
-                            Unsuspend User
-                          </DropdownMenuItem>
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Active</Badge>
                         )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                      <TableCell className="text-slate-400">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-white">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+                            <DropdownMenuItem 
+                              onClick={() => { setSelectedUser(user); setShowUserModal(true) }}
+                              className="text-slate-300 focus:bg-slate-700 focus:text-white"
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            {user.fica_status === 'pending' && (
+                              <>
+                                <DropdownMenuItem 
+                                  onClick={() => { setSelectedUser(user); setFicaAction('approve'); setShowFicaModal(true) }}
+                                  className="text-emerald-400 focus:bg-slate-700 focus:text-emerald-300"
+                                >
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  Approve FICA
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => { setSelectedUser(user); setFicaAction('reject'); setShowFicaModal(true) }}
+                                  className="text-red-400 focus:bg-slate-700 focus:text-red-300"
+                                >
+                                  <XCircle className="mr-2 h-4 w-4" />
+                                  Reject FICA
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {!user.is_suspended ? (
+                              <DropdownMenuItem 
+                                onClick={() => { setSelectedUser(user); setShowUserModal(true) }}
+                                className="text-red-400 focus:bg-slate-700 focus:text-red-300"
+                              >
+                                <UserX className="mr-2 h-4 w-4" />
+                                Suspend User
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem 
+                                onClick={() => handleUnsuspendUser(user.id)}
+                                className="text-emerald-400 focus:bg-slate-700 focus:text-emerald-300"
+                              >
+                                <UserCheck className="mr-2 h-4 w-4" />
+                                Unsuspend User
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-slate-400">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    disabled={pagination.page === 1}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-slate-400">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                    disabled={pagination.page === pagination.totalPages}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
       {/* User Details Modal */}
       <Dialog open={showUserModal} onOpenChange={setShowUserModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl">
           <DialogHeader>
             <DialogTitle>User Details</DialogTitle>
-            <DialogDescription>View and manage user account</DialogDescription>
+            <DialogDescription className="text-slate-400">View and manage user account</DialogDescription>
           </DialogHeader>
           {selectedUser && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Name</Label>
-                  <p className="text-sm">{selectedUser.full_name || 'No name'}</p>
+                  <Label className="text-slate-400">Name</Label>
+                  <p className="text-white">{selectedUser.full_name || 'No name'}</p>
                 </div>
                 <div>
-                  <Label>Email</Label>
-                  <p className="text-sm">{selectedUser.email}</p>
+                  <Label className="text-slate-400">User ID</Label>
+                  <p className="text-white text-sm">{selectedUser.id}</p>
                 </div>
                 <div>
-                  <Label>Role</Label>
-                  <p className="text-sm">{selectedUser.user_role}</p>
+                  <Label className="text-slate-400">Role</Label>
+                  <p className="text-white">{selectedUser.user_role}</p>
                 </div>
                 <div>
-                  <Label>FICA Status</Label>
-                  <p className="text-sm">{selectedUser.fica_status || 'Not submitted'}</p>
+                  <Label className="text-slate-400">FICA Status</Label>
+                  <p className="text-white">{selectedUser.fica_status || 'Not submitted'}</p>
                 </div>
                 <div>
-                  <Label>Account Status</Label>
-                  <p className="text-sm">{selectedUser.is_suspended ? 'Suspended' : 'Active'}</p>
+                  <Label className="text-slate-400">Account Status</Label>
+                  <p className="text-white">{selectedUser.is_suspended ? 'Suspended' : 'Active'}</p>
                 </div>
                 <div>
-                  <Label>Admin Access</Label>
-                  <p className="text-sm">{selectedUser.is_admin ? 'Yes' : 'No'}</p>
+                  <Label className="text-slate-400">Admin Access</Label>
+                  <p className="text-white">{selectedUser.is_admin ? 'Yes' : 'No'}</p>
                 </div>
                 <div>
-                  <Label>Joined</Label>
-                  <p className="text-sm">{new Date(selectedUser.created_at).toLocaleDateString()}</p>
+                  <Label className="text-slate-400">Joined</Label>
+                  <p className="text-white">{new Date(selectedUser.created_at).toLocaleDateString()}</p>
                 </div>
               </div>
 
               {selectedUser.fica_rejection_reason && (
                 <div>
-                  <Label>FICA Rejection Reason</Label>
-                  <p className="text-sm text-red-600">{selectedUser.fica_rejection_reason}</p>
+                  <Label className="text-slate-400">FICA Rejection Reason</Label>
+                  <p className="text-red-400">{selectedUser.fica_rejection_reason}</p>
                 </div>
               )}
 
               {selectedUser.suspension_reason && (
                 <div>
-                  <Label>Suspension Reason</Label>
-                  <p className="text-sm text-red-600">{selectedUser.suspension_reason}</p>
+                  <Label className="text-slate-400">Suspension Reason</Label>
+                  <p className="text-red-400">{selectedUser.suspension_reason}</p>
                 </div>
               )}
 
               {!selectedUser.is_suspended && (
-                <div className="space-y-4">
+                <div className="space-y-4 pt-4 border-t border-slate-800">
                   <div>
-                    <Label htmlFor="suspension-reason">Suspension Reason</Label>
+                    <Label htmlFor="suspension-reason" className="text-slate-400">Suspension Reason</Label>
                     <Textarea
                       id="suspension-reason"
                       value={suspensionReason}
                       onChange={(e) => setSuspensionReason(e.target.value)}
                       placeholder="Reason for suspension..."
+                      className="bg-slate-800 border-slate-700 text-white mt-1"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="suspension-days">Suspension Duration (days)</Label>
+                    <Label htmlFor="suspension-days" className="text-slate-400">Suspension Duration (days)</Label>
                     <Input
                       id="suspension-days"
                       type="number"
@@ -659,6 +540,7 @@ export default function AdminUsersPage() {
                       onChange={(e) => setSuspensionDays(parseInt(e.target.value))}
                       min="1"
                       max="365"
+                      className="bg-slate-800 border-slate-700 text-white mt-1"
                     />
                   </div>
                   <Button 
@@ -677,12 +559,12 @@ export default function AdminUsersPage() {
 
       {/* FICA Action Modal */}
       <Dialog open={showFicaModal} onOpenChange={setShowFicaModal}>
-        <DialogContent>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>
               {ficaAction === 'approve' ? 'Approve FICA' : 'Reject FICA'}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-slate-400">
               {ficaAction === 'approve' 
                 ? 'This will verify the user\'s FICA documents and allow them to sell on the platform.'
                 : 'This will reject the user\'s FICA documents. Please provide a reason.'
@@ -692,77 +574,38 @@ export default function AdminUsersPage() {
           <div className="space-y-4">
             {selectedUser && (
               <div>
-                <Label>User</Label>
-                <p className="text-sm">{selectedUser.full_name} ({selectedUser.email})</p>
+                <Label className="text-slate-400">User</Label>
+                <p className="text-white">{selectedUser.full_name}</p>
               </div>
             )}
             
             {ficaAction === 'reject' && (
               <div>
-                <Label htmlFor="rejection-reason">Rejection Reason</Label>
+                <Label htmlFor="rejection-reason" className="text-slate-400">Rejection Reason</Label>
                 <Textarea
                   id="rejection-reason"
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
                   placeholder="Please provide a reason for rejection..."
+                  className="bg-slate-800 border-slate-700 text-white mt-1"
                   required
                 />
               </div>
             )}
 
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowFicaModal(false)}>
+              <Button variant="outline" onClick={() => setShowFicaModal(false)} className="border-slate-700 text-slate-300">
                 Cancel
               </Button>
               <Button 
                 onClick={handleFicaAction}
                 variant={ficaAction === 'approve' ? 'default' : 'destructive'}
                 disabled={isProcessing || (ficaAction === 'reject' && !rejectionReason)}
+                className={ficaAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
               >
                 {isProcessing ? 'Processing...' : ficaAction === 'approve' ? 'Approve' : 'Reject'}
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Audit Logs Modal */}
-      <Dialog open={showAuditModal} onOpenChange={setShowAuditModal}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Audit Logs</DialogTitle>
-            <DialogDescription>Recent FICA and user management actions</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-96 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Action</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Performed By</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {auditLogs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      <Badge variant={
-                        log.action === 'approved' ? 'default' :
-                        log.action === 'rejected' ? 'destructive' : 'secondary'
-                      }>
-                        {log.action}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{log.user_name || 'Unknown'}</TableCell>
-                    <TableCell>{log.performer_name || 'Unknown'}</TableCell>
-                    <TableCell>{log.reason || '-'}</TableCell>
-                    <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           </div>
         </DialogContent>
       </Dialog>

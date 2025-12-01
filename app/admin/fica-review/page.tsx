@@ -1,33 +1,44 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/utils/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
-import { CheckCircle, XCircle, Eye, Clock, User, FileText, MapPin, Camera, AlertCircle, Home, Shield } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { 
+  FileCheck,
+  Search, 
+  Clock,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  ExternalLink,
+  FileText,
+  User,
+  IdCard,
+  MapPin,
+  Camera
+} from 'lucide-react'
 
-interface FicaReviewUser {
+interface FicaUser {
   id: string
-  user_id: string
-  first_name: string
-  last_name: string
-  email: string
-  fica_status: 'pending' | 'verified' | 'rejected'
+  full_name: string
+  user_role: string
+  fica_status: 'pending' | 'verified' | 'rejected' | null
   fica_rejection_reason?: string
   fica_verified_at?: string
   fica_reviewed_at?: string
-  user_role: string
   created_at: string
+  documents?: FicaDocument[]
 }
 
 interface FicaDocument {
@@ -39,176 +50,122 @@ interface FicaDocument {
 }
 
 export default function FicaReviewPage() {
-  const [users, setUsers] = useState<FicaReviewUser[]>([])
-  const [selectedUser, setSelectedUser] = useState<FicaReviewUser | null>(null)
-  const [userDocuments, setUserDocuments] = useState<FicaDocument[]>([])
-  const [loading, setLoading] = useState(true)
-  const [reviewing, setReviewing] = useState(false)
-  const [rejectionReason, setRejectionReason] = useState('')
-  const [activeTab, setActiveTab] = useState('pending')
+  const searchParams = useSearchParams()
+  const initialStatus = searchParams.get('status') || 'pending'
   
-  const { user } = useAuth()
-  const { toast } = useToast()
-  const router = useRouter()
+  const [users, setUsers] = useState<FicaUser[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState(initialStatus)
+  const [selectedUser, setSelectedUser] = useState<FicaUser | null>(null)
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve')
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  
   const supabase = createClient()
 
-  // Check if user is admin
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) {
-        router.push('/login')
-        return
-      }
+    fetchFicaUsers()
+  }, [searchTerm, statusFilter])
 
-      try {
-        const { data: profile, error } = await supabase
-          .from('user_profiles')
-          .select('user_role, is_admin')
-          .eq('user_id', user.id)
-          .single()
-
-        if (error || !profile || !profile.is_admin) {
-          router.push('/dashboard')
-          return
-        }
-
-        fetchUsers()
-      } catch (error) {
-        console.error('Error checking admin status:', error)
-        router.push('/dashboard')
-      }
-    }
-
-    // Only run if user is available
-    if (user) {
-      checkAdminStatus()
-    }
-  }, [user?.id]) // Only depend on user.id, not the entire user object
-
-  const fetchUsers = async () => {
+  const fetchFicaUsers = async () => {
     try {
       setLoading(true)
       
-      // Get user profiles with FICA status
-      const { data: profiles, error: profilesError } = await supabase
+      // Fetch users with FICA status
+      let query = supabase
         .from('user_profiles')
         .select('*')
         .not('fica_status', 'is', null)
-        .order('created_at', { ascending: false })
 
-      if (profilesError) {
-        console.error('Error fetching profiles:', profilesError)
-        throw profilesError
+      if (statusFilter !== 'all') {
+        query = query.eq('fica_status', statusFilter)
       }
 
-      // Handle the case when no profiles are found (this is normal, not an error)
-      if (!profiles || profiles.length === 0) {
-        setUsers([])
-        return
+      if (searchTerm) {
+        query = query.or(`full_name.ilike.%${searchTerm}%,first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`)
       }
 
-      // For now, just use the profiles without email lookup to avoid auth issues
-      // We can add email lookup later if needed
-      const usersWithEmail = profiles.map(profile => ({
-        ...profile,
-        email: 'Email not available' // We'll show this for now
-      }))
+      query = query.order('created_at', { ascending: false })
 
-      setUsers(usersWithEmail)
-    } catch (error) {
-      console.error('Error fetching users:', error)
-      // Only show error toast for actual errors, not when no users found
-      if (error && typeof error === 'object' && 'message' in error) {
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch users for review.',
-          variant: 'destructive',
+      const { data: profiles, error } = await query
+
+      if (error) throw error
+
+      // Fetch FICA documents for each user
+      const usersWithDocs = await Promise.all(
+        (profiles || []).map(async (profile) => {
+          const { data: documents } = await supabase
+            .from('fica_documents')
+            .select('*')
+            .eq('user_id', profile.user_id)
+
+          return {
+            id: profile.user_id,
+            full_name: profile.full_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'No name',
+            user_role: profile.user_role,
+            fica_status: profile.fica_status,
+            fica_rejection_reason: profile.fica_rejection_reason,
+            fica_verified_at: profile.fica_verified_at,
+            fica_reviewed_at: profile.fica_reviewed_at,
+            created_at: profile.created_at,
+            documents: documents || []
+          }
         })
-      }
+      )
+
+      setUsers(usersWithDocs)
+    } catch (error) {
+      console.error('Error fetching FICA users:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchUserDocuments = async (userId: string) => {
+  const handleReviewAction = async () => {
+    if (!selectedUser) return
+
     try {
-      const { data, error } = await supabase
-        .from('fica_documents')
-        .select('*')
-        .eq('user_id', userId)
-        .order('uploaded_at', { ascending: false })
+      setIsProcessing(true)
 
-      if (error) throw error
-      setUserDocuments(data || [])
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: selectedUser.id,
+          action: reviewAction === 'approve' ? 'approve_fica' : 'reject_fica',
+          rejection_reason: rejectionReason
+        })
+      })
+
+      if (response.ok) {
+        setShowReviewModal(false)
+        setSelectedUser(null)
+        setRejectionReason('')
+        fetchFicaUsers()
+      }
     } catch (error) {
-      console.error('Error fetching documents:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch user documents.',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleReview = async (userId: string, status: 'verified' | 'rejected') => {
-    try {
-      setReviewing(true)
-      
-      const { error } = await supabase.rpc('update_fica_status', {
-        p_user_id: userId,
-        p_status: status,
-        p_reason: status === 'rejected' ? rejectionReason : null
-      })
-
-      if (error) throw error
-
-      toast({
-        title: 'Review completed',
-        description: `User FICA status updated to ${status}.`,
-      })
-
-      setSelectedUser(null)
-      setRejectionReason('')
-      fetchUsers()
-    } catch (error) {
-      console.error('Error updating FICA status:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to update FICA status.',
-        variant: 'destructive',
-      })
+      console.error('Error processing FICA action:', error)
     } finally {
-      setReviewing(false)
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return <Badge variant="default" className="bg-green-500">Verified</Badge>
-      case 'rejected':
-        return <Badge variant="destructive">Rejected</Badge>
-      case 'pending':
-        return <Badge variant="secondary">Pending</Badge>
-      default:
-        return <Badge variant="outline">Unknown</Badge>
+      setIsProcessing(false)
     }
   }
 
   const getDocumentIcon = (type: string) => {
     switch (type) {
       case 'id_document':
-        return <FileText className="h-4 w-4" />
+        return <IdCard className="h-5 w-5 text-blue-400" />
       case 'proof_of_address':
-        return <MapPin className="h-4 w-4" />
+        return <MapPin className="h-5 w-5 text-green-400" />
       case 'id_selfie':
-        return <Camera className="h-4 w-4" />
+        return <Camera className="h-5 w-5 text-purple-400" />
       default:
-        return <FileText className="h-4 w-4" />
+        return <FileText className="h-5 w-5 text-slate-400" />
     }
   }
 
-  const getDocumentTitle = (type: string) => {
+  const getDocumentLabel = (type: string) => {
     switch (type) {
       case 'id_document':
         return 'ID Document'
@@ -217,262 +174,317 @@ export default function FicaReviewPage() {
       case 'id_selfie':
         return 'ID Selfie'
       default:
-        return 'Document'
+        return type
     }
   }
 
-  const filteredUsers = users.filter(user => {
-    switch (activeTab) {
-      case 'pending':
-        return user.fica_status === 'pending'
-      case 'verified':
-        return user.fica_status === 'verified'
-      case 'rejected':
-        return user.fica_status === 'rejected'
-      default:
-        return true
-    }
-  })
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p>Loading FICA reviews...</p>
-        </div>
-      </div>
-    )
-  }
+  const pendingCount = users.filter(u => u.fica_status === 'pending').length
+  const verifiedCount = users.filter(u => u.fica_status === 'verified').length
+  const rejectedCount = users.filter(u => u.fica_status === 'rejected').length
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">FICA Review</h1>
-          <p className="text-muted-foreground">
-            Review and verify user FICA documents
-          </p>
+          <h1 className="text-3xl font-bold text-white">FICA Review</h1>
+          <p className="text-slate-400 mt-1">Review and verify user FICA documents</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button asChild variant="secondary">
-            <Link href="/dashboard">
-              <Home className="mr-2 h-4 w-4" />
-              User Dashboard
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/admin">
-              <Shield className="mr-2 h-4 w-4" />
-              Admin Dashboard
-            </Link>
-          </Button>
-          <Button onClick={fetchUsers} variant="outline">
-            Refresh
-          </Button>
-        </div>
+        <Button onClick={fetchFicaUsers} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="pending" className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Pending ({users.filter(u => u.fica_status === 'pending').length})
-          </TabsTrigger>
-          <TabsTrigger value="verified" className="flex items-center gap-2">
-            <CheckCircle className="h-4 w-4" />
-            Verified ({users.filter(u => u.fica_status === 'verified').length})
-          </TabsTrigger>
-          <TabsTrigger value="rejected" className="flex items-center gap-2">
-            <XCircle className="h-4 w-4" />
-            Rejected ({users.filter(u => u.fica_status === 'rejected').length})
-          </TabsTrigger>
-        </TabsList>
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card 
+          className={`bg-slate-900 border-slate-800 cursor-pointer transition-all hover:border-yellow-500/50 ${statusFilter === 'pending' ? 'border-yellow-500' : ''}`}
+          onClick={() => setStatusFilter('pending')}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Clock className="h-8 w-8 text-yellow-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{pendingCount}</p>
+                <p className="text-sm text-slate-400">Pending Review</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card 
+          className={`bg-slate-900 border-slate-800 cursor-pointer transition-all hover:border-emerald-500/50 ${statusFilter === 'verified' ? 'border-emerald-500' : ''}`}
+          onClick={() => setStatusFilter('verified')}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <CheckCircle className="h-8 w-8 text-emerald-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{verifiedCount}</p>
+                <p className="text-sm text-slate-400">Verified</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card 
+          className={`bg-slate-900 border-slate-800 cursor-pointer transition-all hover:border-red-500/50 ${statusFilter === 'rejected' ? 'border-red-500' : ''}`}
+          onClick={() => setStatusFilter('rejected')}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <XCircle className="h-8 w-8 text-red-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{rejectedCount}</p>
+                <p className="text-sm text-slate-400">Rejected</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value={activeTab} className="space-y-4">
-          {filteredUsers.length === 0 ? (
-            <Card>
-              <CardContent className="flex items-center justify-center p-8">
-                <div className="text-center">
-                  <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No users found for this status.</p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4">
-              {filteredUsers.map((user) => (
-                <Card key={user.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          <span className="font-medium">
-                            {user.first_name} {user.last_name}
-                          </span>
-                          {getStatusBadge(user.fica_status)}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Role: {user.user_role} • Submitted: {new Date(user.created_at).toLocaleDateString()}
-                        </p>
-                        {user.fica_rejection_reason && (
-                          <p className="text-xs text-red-600">
-                            Rejection reason: {user.fica_rejection_reason}
-                          </p>
+      {/* Filters */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="pt-6">
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Input
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-48 bg-slate-800 border-slate-700 text-white">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="verified">Verified</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* FICA Submissions */}
+      <div className="grid gap-4">
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+          </div>
+        ) : users.length === 0 ? (
+          <Card className="bg-slate-900 border-slate-800">
+            <CardContent className="py-12 text-center">
+              <FileCheck className="h-12 w-12 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400">No FICA submissions found</p>
+            </CardContent>
+          </Card>
+        ) : (
+          users.map((user) => (
+            <Card key={user.id} className="bg-slate-900 border-slate-800">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="h-12 w-12 rounded-full bg-slate-800 flex items-center justify-center">
+                      <User className="h-6 w-6 text-slate-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">{user.full_name}</h3>
+                      <p className="text-sm text-slate-400">{user.user_role} • Submitted {new Date(user.created_at).toLocaleDateString()}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        {user.fica_status === 'pending' && (
+                          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Pending Review</Badge>
+                        )}
+                        {user.fica_status === 'verified' && (
+                          <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Verified</Badge>
+                        )}
+                        {user.fica_status === 'rejected' && (
+                          <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Rejected</Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedUser(user)
-                                fetchUserDocuments(user.user_id)
-                              }}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Review
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>FICA Review - {user.first_name} {user.last_name}</DialogTitle>
-                              <DialogDescription>
-                                Review the submitted FICA documents and approve or reject the verification.
-                              </DialogDescription>
-                            </DialogHeader>
-                            
-                            <div className="space-y-6">
-                              {/* User Info */}
-                              <Card>
-                                <CardHeader>
-                                  <CardTitle className="text-sm">User Information</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2">
-                                  <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                      <Label className="text-muted-foreground">Name</Label>
-                                      <p>{user.first_name} {user.last_name}</p>
-                                    </div>
-                                    <div>
-                                      <Label className="text-muted-foreground">Email</Label>
-                                      <p>{user.email}</p>
-                                    </div>
-                                    <div>
-                                      <Label className="text-muted-foreground">Role</Label>
-                                      <p className="capitalize">{user.user_role}</p>
-                                    </div>
-                                    <div>
-                                      <Label className="text-muted-foreground">Status</Label>
-                                      <div>{getStatusBadge(user.fica_status)}</div>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-
-                              {/* Documents */}
-                              <Card>
-                                <CardHeader>
-                                  <CardTitle className="text-sm">Submitted Documents</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  {userDocuments.length === 0 ? (
-                                    <p className="text-muted-foreground text-center py-4">
-                                      No documents found for this user.
-                                    </p>
-                                  ) : (
-                                    <div className="grid gap-4 md:grid-cols-3">
-                                      {userDocuments.map((doc) => (
-                                        <div key={doc.id} className="space-y-2">
-                                          <div className="flex items-center gap-2">
-                                            {getDocumentIcon(doc.document_type)}
-                                            <span className="text-sm font-medium">
-                                              {getDocumentTitle(doc.document_type)}
-                                            </span>
-                                          </div>
-                                          <div className="aspect-video bg-muted rounded-lg overflow-hidden">
-                                            {doc.file_url.includes('.pdf') ? (
-                                              <div className="flex items-center justify-center h-full">
-                                                <FileText className="h-8 w-8 text-muted-foreground" />
-                                              </div>
-                                            ) : (
-                                              <img
-                                                src={doc.file_url}
-                                                alt={doc.file_name}
-                                                className="w-full h-full object-cover"
-                                              />
-                                            )}
-                                          </div>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full"
-                                            onClick={() => window.open(doc.file_url, '_blank')}
-                                          >
-                                            View Full Size
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </CardContent>
-                              </Card>
-
-                              {/* Review Actions */}
-                              {user.fica_status === 'pending' && (
-                                <Card>
-                                  <CardHeader>
-                                    <CardTitle className="text-sm">Review Actions</CardTitle>
-                                  </CardHeader>
-                                  <CardContent className="space-y-4">
-                                    <div>
-                                      <Label htmlFor="rejection-reason">Rejection Reason (if rejecting)</Label>
-                                      <Textarea
-                                        id="rejection-reason"
-                                        placeholder="Enter reason for rejection..."
-                                        value={rejectionReason}
-                                        onChange={(e) => setRejectionReason(e.target.value)}
-                                        className="mt-1"
-                                      />
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Button
-                                        onClick={() => handleReview(user.user_id, 'verified')}
-                                        disabled={reviewing}
-                                        className="flex-1"
-                                      >
-                                        <CheckCircle className="h-4 w-4 mr-1" />
-                                        Approve
-                                      </Button>
-                                      <Button
-                                        variant="destructive"
-                                        onClick={() => handleReview(user.user_id, 'rejected')}
-                                        disabled={reviewing}
-                                        className="flex-1"
-                                      >
-                                        <XCircle className="h-4 w-4 mr-1" />
-                                        Reject
-                                      </Button>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              )}
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
+                      {user.fica_rejection_reason && (
+                        <p className="text-sm text-red-400 mt-2">Reason: {user.fica_rejection_reason}</p>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setSelectedUser(user); setShowReviewModal(true) }}
+                      className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Review
+                    </Button>
+                    {user.fica_status === 'pending' && (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => { setSelectedUser(user); setReviewAction('approve'); setShowReviewModal(true) }}
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => { setSelectedUser(user); setReviewAction('reject'); setShowReviewModal(true) }}
+                        >
+                          <XCircle className="mr-2 h-4 w-4" />
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Documents */}
+                {user.documents && user.documents.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-slate-800">
+                    <p className="text-sm text-slate-400 mb-3">Submitted Documents</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {user.documents.map((doc) => (
+                        <a
+                          key={doc.id}
+                          href={doc.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
+                        >
+                          {getDocumentIcon(doc.document_type)}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">{getDocumentLabel(doc.document_type)}</p>
+                            <p className="text-xs text-slate-500 truncate">{doc.file_name}</p>
+                          </div>
+                          <ExternalLink className="h-4 w-4 text-slate-500" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Review Modal */}
+      <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>FICA Review - {selectedUser?.full_name}</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Review submitted documents and make a decision
+            </DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <div className="space-y-4">
+              {/* User Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-400">Name</Label>
+                  <p className="text-white">{selectedUser.full_name}</p>
+                </div>
+                <div>
+                  <Label className="text-slate-400">Role</Label>
+                  <p className="text-white">{selectedUser.user_role}</p>
+                </div>
+                <div>
+                  <Label className="text-slate-400">Current Status</Label>
+                  <p className="text-white capitalize">{selectedUser.fica_status}</p>
+                </div>
+                <div>
+                  <Label className="text-slate-400">Submitted</Label>
+                  <p className="text-white">{new Date(selectedUser.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              {/* Documents */}
+              {selectedUser.documents && selectedUser.documents.length > 0 && (
+                <div>
+                  <Label className="text-slate-400">Documents</Label>
+                  <div className="grid gap-2 mt-2">
+                    {selectedUser.documents.map((doc) => (
+                      <a
+                        key={doc.id}
+                        href={doc.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
+                      >
+                        {getDocumentIcon(doc.document_type)}
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-white">{getDocumentLabel(doc.document_type)}</p>
+                          <p className="text-xs text-slate-500">{doc.file_name}</p>
+                        </div>
+                        <ExternalLink className="h-4 w-4 text-slate-500" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Selection */}
+              {selectedUser.fica_status === 'pending' && (
+                <div className="space-y-4 pt-4 border-t border-slate-800">
+                  <div className="flex gap-4">
+                    <Button
+                      variant={reviewAction === 'approve' ? 'default' : 'outline'}
+                      onClick={() => setReviewAction('approve')}
+                      className={reviewAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-slate-700 text-slate-300'}
+                    >
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Approve
+                    </Button>
+                    <Button
+                      variant={reviewAction === 'reject' ? 'destructive' : 'outline'}
+                      onClick={() => setReviewAction('reject')}
+                      className={reviewAction !== 'reject' ? 'border-slate-700 text-slate-300' : ''}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" />
+                      Reject
+                    </Button>
+                  </div>
+
+                  {reviewAction === 'reject' && (
+                    <div>
+                      <Label htmlFor="rejection-reason" className="text-slate-400">Rejection Reason</Label>
+                      <Textarea
+                        id="rejection-reason"
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        placeholder="Please provide a reason for rejection..."
+                        className="bg-slate-800 border-slate-700 text-white mt-1"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setShowReviewModal(false)} className="border-slate-700 text-slate-300">
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleReviewAction}
+                      disabled={isProcessing || (reviewAction === 'reject' && !rejectionReason)}
+                      className={reviewAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                      variant={reviewAction === 'reject' ? 'destructive' : 'default'}
+                    >
+                      {isProcessing ? 'Processing...' : reviewAction === 'approve' ? 'Approve FICA' : 'Reject FICA'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

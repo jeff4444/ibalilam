@@ -57,6 +57,7 @@ export default function ProfilePage() {
   const [newSpecialization, setNewSpecialization] = useState("")
   const [shopData, setShopData] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [enableBecomeSeller, setEnableBecomeSeller] = useState(true)
   const router = useRouter()
   const { user, loading, signOut } = useAuth()
   const supabase = createClient()
@@ -187,6 +188,33 @@ export default function ProfilePage() {
 
     checkAdminStatus()
   }, [user?.id, supabase])
+
+  // Fetch feature flag for "Become a Seller" button
+  useEffect(() => {
+    const fetchBecomSellerFlag = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('feature_flags')
+          .select('flag_value')
+          .eq('flag_name', 'enable_become_seller')
+          .single()
+
+        if (error) {
+          console.error('Error fetching enable_become_seller flag:', error)
+          // Default to true if fetch fails
+          setEnableBecomeSeller(true)
+          return
+        }
+
+        setEnableBecomeSeller(data?.flag_value ?? true)
+      } catch (err) {
+        console.error('Unexpected error fetching feature flag:', err)
+        setEnableBecomeSeller(true)
+      }
+    }
+
+    fetchBecomSellerFlag()
+  }, [supabase])
 
   const stats = {
     rating: shopStats.rating,
@@ -651,7 +679,7 @@ export default function ProfilePage() {
                   </CardContent>
                 </Card>
 
-                {userProfile.userRole !== "seller" && (
+                {userProfile.userRole !== "seller" && enableBecomeSeller && (
                   <div className="flex justify-end">
                     <Button
                       onClick={handleBecomeSeller}

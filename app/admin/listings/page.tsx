@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,753 +10,563 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { createClient } from '@/utils/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
 import { 
   Package, 
   Search, 
-  Eye, 
-  EyeOff, 
-  Trash2, 
-  Flag, 
+  Eye,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Flag,
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Home,
-  Filter,
-  MoreHorizontal,
-  User,
-  Calendar,
-  DollarSign
+  ExternalLink,
+  Image as ImageIcon
 } from 'lucide-react'
-import Link from 'next/link'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import Image from 'next/image'
 
 interface Listing {
   id: string
+  shop_id: string
   name: string
-  description: string
+  description?: string
   category: string
-  subcategory: string | null
-  brand: string | null
-  model: string | null
   price: number
   stock_quantity: number
-  status: 'active' | 'inactive' | 'out_of_stock' | 'sold' | 'draft'
+  status: 'active' | 'inactive' | 'draft' | 'out_of_stock' | 'sold'
   part_type: 'original' | 'refurbished'
-  image_url: string | null
-  images: string[] | null
   views: number
+  image_url?: string
+  images?: string[]
+  is_flagged: boolean
+  flag_reason?: string
+  flag_count: number
   created_at: string
   updated_at: string
-  published_at: string | null
-  shop_id: string
   shop_name: string
-  seller_name: string
-  seller_email: string
-  is_flagged: boolean
-  flag_reason: string | null
-  flag_count: number
-  admin_notes: string | null
 }
 
-interface FlagReport {
-  id: string
-  part_id: string
-  reporter_id: string
-  reason: string
-  description: string
-  status: 'pending' | 'resolved' | 'dismissed'
-  created_at: string
-  reporter_name: string
-  part_name: string
+interface Pagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
 }
+
+const categories = [
+  { value: 'all', label: 'All Categories' },
+  { value: 'mobile_phones', label: 'Mobile Phones' },
+  { value: 'phone_parts', label: 'Phone Parts' },
+  { value: 'phone_accessories', label: 'Phone Accessories' },
+  { value: 'laptops', label: 'Laptops' },
+  { value: 'steam_kits', label: 'STEAM Kits' },
+  { value: 'other_electronics', label: 'Other Electronics' }
+]
 
 export default function AdminListingsPage() {
   const [listings, setListings] = useState<Listing[]>([])
-  const [flagReports, setFlagReports] = useState<FlagReport[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [flagFilter, setFlagFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [flaggedOnly, setFlaggedOnly] = useState(false)
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 0 })
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
-  const [showListingModal, setShowListingModal] = useState(false)
-  const [showFlagModal, setShowFlagModal] = useState(false)
-  const [adminNotes, setAdminNotes] = useState('')
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [showActionModal, setShowActionModal] = useState(false)
+  const [actionType, setActionType] = useState<'suspend' | 'clear_flag'>('suspend')
+  const [actionReason, setActionReason] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  const { user } = useAuth()
-  const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) {
-        router.push('/login')
-        return
-      }
-
-      try {
-        const { data: profile, error } = await supabase
-          .from('user_profiles')
-          .select('user_role, is_admin')
-          .eq('user_id', user.id)
-          .single()
-
-        if (error || !profile || !profile.is_admin) {
-          router.push('/dashboard')
-          return
-        }
-
-        fetchListings()
-        fetchFlagReports()
-      } catch (error) {
-        console.error('Error checking admin status:', error)
-        router.push('/dashboard')
-      }
-    }
-
-    if (user) {
-      checkAdminStatus()
-    }
-  }, [user?.id])
+    fetchListings()
+  }, [searchTerm, statusFilter, categoryFilter, flaggedOnly, pagination.page])
 
   const fetchListings = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('parts')
-        .select(`
-          *,
-          shops!inner(
-            name,
-            user_id
-          )
-        `)
-        .order('created_at', { ascending: false })
+      
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString()
+      })
+      
+      if (searchTerm) params.set('search', searchTerm)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (categoryFilter !== 'all') params.set('category', categoryFilter)
+      if (flaggedOnly) params.set('flagged', 'true')
 
-      if (error) throw error
-
-      const transformedListings = data?.map(part => ({
-        id: part.id,
-        name: part.name,
-        description: part.description || '',
-        category: part.category,
-        subcategory: part.subcategory,
-        brand: part.brand,
-        model: part.model,
-        price: part.price,
-        stock_quantity: part.stock_quantity,
-        status: part.status,
-        part_type: part.part_type,
-        image_url: part.image_url,
-        images: part.images,
-        views: part.views || 0,
-        created_at: part.created_at,
-        updated_at: part.updated_at,
-        published_at: part.published_at,
-        shop_id: part.shop_id,
-        shop_name: part.shops?.name || 'Unknown Shop',
-        seller_name: 'Unknown Seller', // We can't access user profile data directly
-        seller_email: 'Unknown Email', // We can't access auth.users email directly
-        is_flagged: part.is_flagged || false,
-        flag_reason: part.flag_reason,
-        flag_count: part.flag_count || 0,
-        admin_notes: part.admin_notes
-      })) || []
-
-      setListings(transformedListings)
-    } catch (err: any) {
-      console.error('Error fetching listings:', err)
-      setError(err.message)
+      const response = await fetch(`/api/admin/listings?${params}`)
+      const data = await response.json()
+      
+      if (response.ok) {
+        setListings(data.listings)
+        setPagination(prev => ({ ...prev, ...data.pagination }))
+      }
+    } catch (error) {
+      console.error('Error fetching listings:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchFlagReports = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('part_flags')
-        .select(`
-          *,
-          part:parts!part_flags_part_id_fkey(name)
-        `)
-        .order('created_at', { ascending: false })
+  const handleAction = async () => {
+    if (!selectedListing) return
 
-      if (error) throw error
-
-      const transformedReports = data?.map(flag => ({
-        id: flag.id,
-        part_id: flag.part_id,
-        reporter_id: flag.reporter_id,
-        reason: flag.reason,
-        description: flag.description,
-        status: flag.status,
-        created_at: flag.created_at,
-        reporter_name: 'Anonymous', // We can't access user profile data directly
-        part_name: flag.part?.name || 'Unknown Part'
-      })) || []
-
-      setFlagReports(transformedReports)
-    } catch (err: any) {
-      console.error('Error fetching flag reports:', err)
-    }
-  }
-
-  const handleListingAction = async (action: 'hide' | 'show' | 'remove', listingId: string) => {
     try {
       setIsProcessing(true)
-      setError(null)
 
-      let updateData: any = {}
-      
-      switch (action) {
-        case 'hide':
-          updateData = { status: 'inactive', admin_notes: adminNotes }
-          break
-        case 'show':
-          updateData = { status: 'active', admin_notes: adminNotes }
-          break
-        case 'remove':
-          // Delete the listing
-          const { error: deleteError } = await supabase
-            .from('parts')
-            .delete()
-            .eq('id', listingId)
-
-          if (deleteError) throw deleteError
-          break
-      }
-
-      if (action !== 'remove') {
-        const { error } = await supabase
-          .from('parts')
-          .update(updateData)
-          .eq('id', listingId)
-
-        if (error) throw error
-      }
-
-      setShowListingModal(false)
-      setSelectedListing(null)
-      setAdminNotes('')
-      fetchListings()
-    } catch (err: any) {
-      console.error('Error processing listing action:', err)
-      setError(err.message)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleFlagAction = async (flagId: string, action: 'resolve' | 'dismiss') => {
-    try {
-      setIsProcessing(true)
-      setError(null)
-
-      const { error } = await supabase
-        .from('part_flags')
-        .update({ 
-          status: action === 'resolve' ? 'resolved' : 'dismissed',
-          resolved_at: new Date().toISOString(),
-          resolved_by: user?.id
+      const response = await fetch('/api/admin/listings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listing_id: selectedListing.id,
+          action: actionType,
+          reason: actionReason
         })
-        .eq('id', flagId)
+      })
 
-      if (error) throw error
-
-      fetchFlagReports()
-    } catch (err: any) {
-      console.error('Error processing flag action:', err)
-      setError(err.message)
+      if (response.ok) {
+        setShowActionModal(false)
+        setSelectedListing(null)
+        setActionReason('')
+        fetchListings()
+      }
+    } catch (error) {
+      console.error('Error processing action:', error)
     } finally {
       setIsProcessing(false)
     }
   }
 
-  const filteredListings = listings.filter(listing => {
-    const matchesSearch = searchTerm === '' || 
-      listing.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      listing.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      listing.seller_name.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesCategory = categoryFilter === 'all' || listing.category === categoryFilter
-    const matchesStatus = statusFilter === 'all' || listing.status === statusFilter
-    const matchesType = typeFilter === 'all' || listing.part_type === typeFilter
-    const matchesFlag = flagFilter === 'all' || 
-      (flagFilter === 'flagged' && listing.is_flagged) ||
-      (flagFilter === 'not_flagged' && !listing.is_flagged)
+  const handleApprove = async (listing: Listing) => {
+    try {
+      setIsProcessing(true)
 
-    return matchesSearch && matchesCategory && matchesStatus && matchesType && matchesFlag
-  })
+      const response = await fetch('/api/admin/listings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listing_id: listing.id,
+          action: 'approve'
+        })
+      })
 
-  const categories = [...new Set(listings.map(l => l.category))].sort()
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p>Loading listings...</p>
-        </div>
-      </div>
-    )
+      if (response.ok) {
+        fetchListings()
+      }
+    } catch (error) {
+      console.error('Error approving listing:', error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Active</Badge>
+      case 'draft':
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">Draft</Badge>
+      case 'inactive':
+        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Inactive</Badge>
+      case 'out_of_stock':
+        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Out of Stock</Badge>
+      case 'sold':
+        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Sold</Badge>
+      default:
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">{status}</Badge>
+    }
+  }
+
+  const activeListings = listings.filter(l => l.status === 'active').length
+  const draftListings = listings.filter(l => l.status === 'draft').length
+  const flaggedListings = listings.filter(l => l.is_flagged).length
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Listing Management</h1>
-          <p className="text-muted-foreground">
-            Manage product listings, review flags, and moderate content
-          </p>
+          <h1 className="text-3xl font-bold text-white">Listings</h1>
+          <p className="text-slate-400 mt-1">Manage platform listings and moderate content</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button asChild variant="secondary">
-            <Link href="/admin">
-              <Home className="mr-2 h-4 w-4" />
-              Admin Dashboard
-            </Link>
-          </Button>
-          <Button onClick={() => setShowFlagModal(true)} variant="outline">
-            <Flag className="mr-2 h-4 w-4" />
-            Flag Reports ({flagReports.filter(f => f.status === 'pending').length})
-          </Button>
-        </div>
+        <Button onClick={fetchListings} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Listings</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{listings.length}</div>
-            <p className="text-xs text-muted-foreground">
-              All product listings
-            </p>
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Package className="h-8 w-8 text-slate-400" />
+              <div>
+                <p className="text-2xl font-bold text-white">{pagination.total}</p>
+                <p className="text-sm text-slate-400">Total Listings</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Listings</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {listings.filter(l => l.status === 'active').length}
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <CheckCircle className="h-8 w-8 text-emerald-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{activeListings}</p>
+                <p className="text-sm text-slate-400">Active</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Currently visible
-            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Flagged Listings</CardTitle>
-            <Flag className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {listings.filter(l => l.is_flagged).length}
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <AlertTriangle className="h-8 w-8 text-yellow-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{draftListings}</p>
+                <p className="text-sm text-slate-400">Draft</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Require review
-            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Flags</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {flagReports.filter(f => f.status === 'pending').length}
+        <Card 
+          className={`bg-slate-900 border-slate-800 cursor-pointer transition-all hover:border-red-500/50 ${flaggedOnly ? 'border-red-500' : ''}`}
+          onClick={() => setFlaggedOnly(!flaggedOnly)}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Flag className="h-8 w-8 text-red-500" />
+              <div>
+                <p className="text-2xl font-bold text-white">{flaggedListings}</p>
+                <p className="text-sm text-slate-400">Flagged</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Awaiting review
-            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Listing Search & Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <Input
                 placeholder="Search listings..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8"
+                className="pl-9 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
-            
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {categories.map(category => (
-                  <SelectItem key={category} value={category}>{category}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All status" />
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="sold">Sold</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
                 <SelectItem value="out_of_stock">Out of Stock</SelectItem>
               </SelectContent>
             </Select>
-
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All types" />
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                <SelectValue placeholder="Category" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="original">Original</SelectItem>
-                <SelectItem value="refurbished">Refurbished</SelectItem>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                {categories.map(cat => (
+                  <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-
-            <Select value={flagFilter} onValueChange={setFlagFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Flag status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All listings</SelectItem>
-                <SelectItem value="flagged">Flagged</SelectItem>
-                <SelectItem value="not_flagged">Not flagged</SelectItem>
-              </SelectContent>
-            </Select>
+            <Button
+              variant={flaggedOnly ? 'default' : 'outline'}
+              onClick={() => setFlaggedOnly(!flaggedOnly)}
+              className={flaggedOnly ? 'bg-red-600 hover:bg-red-700' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}
+            >
+              <Flag className="mr-2 h-4 w-4" />
+              Flagged Only
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Listings Table */}
-      <Card>
+      <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle>Listings ({filteredListings.length})</CardTitle>
-          <CardDescription>Manage product listings and moderate content</CardDescription>
+          <CardTitle className="text-white">Listings ({pagination.total})</CardTitle>
+          <CardDescription className="text-slate-400">Manage and moderate listings</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Seller</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Views</TableHead>
-                <TableHead>Flags</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredListings.map((listing) => (
-                <TableRow key={listing.id}>
-                  <TableCell>
-                    <div className="flex items-center space-x-3">
-                      <Image
-                        src={listing.images?.[0] || listing.image_url || "/placeholder.svg"}
-                        alt={listing.name}
-                        width={40}
-                        height={40}
-                        className="rounded-md"
-                      />
-                      <div>
-                        <div className="font-medium">{listing.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {listing.part_type} • {listing.brand || 'No brand'}
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-slate-800 hover:bg-transparent">
+                    <TableHead className="text-slate-400">Listing</TableHead>
+                    <TableHead className="text-slate-400">Shop</TableHead>
+                    <TableHead className="text-slate-400">Category</TableHead>
+                    <TableHead className="text-slate-400">Price</TableHead>
+                    <TableHead className="text-slate-400">Stock</TableHead>
+                    <TableHead className="text-slate-400">Status</TableHead>
+                    <TableHead className="text-slate-400 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {listings.map((listing) => (
+                    <TableRow key={listing.id} className="border-slate-800 hover:bg-slate-800/50">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden">
+                            {listing.image_url ? (
+                              <img src={listing.image_url} alt={listing.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <ImageIcon className="h-5 w-5 text-slate-500" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-white flex items-center gap-2">
+                              {listing.name}
+                              {listing.is_flagged && (
+                                <Flag className="h-4 w-4 text-red-500" />
+                              )}
+                            </div>
+                            <div className="text-sm text-slate-500">{listing.views} views</div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{listing.seller_name}</div>
-                      <div className="text-sm text-muted-foreground">{listing.seller_email}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{listing.category}</Badge>
-                  </TableCell>
-                  <TableCell>${listing.price.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={
-                      listing.status === "active" ? "default" : 
-                      listing.status === "out_of_stock" ? "destructive" : 
-                      "secondary"
-                    }>
-                      {listing.status === "active" ? "Active" : 
-                       listing.status === "out_of_stock" ? "Out of Stock" :
-                       listing.status === "draft" ? "Draft" :
-                       listing.status === "inactive" ? "Inactive" : "Sold"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{listing.views}</TableCell>
-                  <TableCell>
-                    {listing.is_flagged ? (
-                      <Badge variant="destructive">{listing.flag_count}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">0</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {new Date(listing.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => {
-                          setSelectedListing(listing)
-                          setShowListingModal(true)
-                        }}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          View Details
-                        </DropdownMenuItem>
-                        {listing.status === 'active' ? (
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedListing(listing)
-                            setShowListingModal(true)
-                          }}>
-                            <EyeOff className="mr-2 h-4 w-4" />
-                            Hide Listing
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedListing(listing)
-                            setShowListingModal(true)
-                          }}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            Show Listing
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem 
-                          className="text-red-600"
-                          onClick={() => {
-                            setSelectedListing(listing)
-                            setShowListingModal(true)
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Remove Listing
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                      <TableCell className="text-slate-300">{listing.shop_name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="border-slate-600 text-slate-300">
+                          {listing.category.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-white">{formatCurrency(listing.price)}</TableCell>
+                      <TableCell className="text-slate-300">{listing.stock_quantity}</TableCell>
+                      <TableCell>{getStatusBadge(listing.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0 text-slate-400 hover:text-white">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
+                            <DropdownMenuItem 
+                              onClick={() => { setSelectedListing(listing); setShowDetailsModal(true) }}
+                              className="text-slate-300 focus:bg-slate-700 focus:text-white"
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            {listing.status === 'draft' && (
+                              <DropdownMenuItem 
+                                onClick={() => handleApprove(listing)}
+                                className="text-emerald-400 focus:bg-slate-700 focus:text-emerald-300"
+                                disabled={isProcessing}
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Approve Listing
+                              </DropdownMenuItem>
+                            )}
+                            {listing.status === 'active' && (
+                              <DropdownMenuItem 
+                                onClick={() => { setSelectedListing(listing); setActionType('suspend'); setShowActionModal(true) }}
+                                className="text-red-400 focus:bg-slate-700 focus:text-red-300"
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Suspend Listing
+                              </DropdownMenuItem>
+                            )}
+                            {listing.is_flagged && (
+                              <DropdownMenuItem 
+                                onClick={() => { setSelectedListing(listing); setActionType('clear_flag'); setShowActionModal(true) }}
+                                className="text-yellow-400 focus:bg-slate-700 focus:text-yellow-300"
+                              >
+                                <Flag className="mr-2 h-4 w-4" />
+                                Clear Flag
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-slate-400">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    disabled={pagination.page === 1}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-slate-400">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                    disabled={pagination.page === pagination.totalPages}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
-      {/* Listing Details Modal */}
-      <Dialog open={showListingModal} onOpenChange={setShowListingModal}>
-        <DialogContent className="max-w-4xl">
+      {/* Details Modal */}
+      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl">
           <DialogHeader>
             <DialogTitle>Listing Details</DialogTitle>
-            <DialogDescription>View and manage product listing</DialogDescription>
+            <DialogDescription className="text-slate-400">View listing information</DialogDescription>
           </DialogHeader>
           {selectedListing && (
             <div className="space-y-4">
+              <div className="flex gap-4">
+                <div className="h-32 w-32 rounded-lg bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {selectedListing.image_url ? (
+                    <img src={selectedListing.image_url} alt={selectedListing.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon className="h-8 w-8 text-slate-500" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                    {selectedListing.name}
+                    {selectedListing.is_flagged && <Flag className="h-5 w-5 text-red-500" />}
+                  </h3>
+                  <p className="text-slate-400 mt-1">{selectedListing.description || 'No description'}</p>
+                  <div className="flex gap-2 mt-2">
+                    {getStatusBadge(selectedListing.status)}
+                    <Badge variant="outline" className="border-slate-600 text-slate-300">
+                      {selectedListing.part_type}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Product Name</Label>
-                  <p className="text-sm">{selectedListing.name}</p>
+                  <Label className="text-slate-400">Price</Label>
+                  <p className="text-white text-xl font-semibold">{formatCurrency(selectedListing.price)}</p>
                 </div>
                 <div>
-                  <Label>Seller</Label>
-                  <p className="text-sm">{selectedListing.seller_name} ({selectedListing.seller_email})</p>
+                  <Label className="text-slate-400">Stock</Label>
+                  <p className="text-white text-xl font-semibold">{selectedListing.stock_quantity}</p>
                 </div>
                 <div>
-                  <Label>Category</Label>
-                  <p className="text-sm">{selectedListing.category}</p>
+                  <Label className="text-slate-400">Shop</Label>
+                  <p className="text-white">{selectedListing.shop_name}</p>
                 </div>
                 <div>
-                  <Label>Price</Label>
-                  <p className="text-sm">${selectedListing.price.toFixed(2)}</p>
+                  <Label className="text-slate-400">Category</Label>
+                  <p className="text-white">{selectedListing.category.replace('_', ' ')}</p>
                 </div>
                 <div>
-                  <Label>Status</Label>
-                  <p className="text-sm">{selectedListing.status}</p>
+                  <Label className="text-slate-400">Views</Label>
+                  <p className="text-white">{selectedListing.views}</p>
                 </div>
                 <div>
-                  <Label>Views</Label>
-                  <p className="text-sm">{selectedListing.views}</p>
+                  <Label className="text-slate-400">Created</Label>
+                  <p className="text-white">{new Date(selectedListing.created_at).toLocaleDateString()}</p>
                 </div>
               </div>
 
-              <div>
-                <Label>Description</Label>
-                <p className="text-sm">{selectedListing.description}</p>
-              </div>
-
-              {selectedListing.is_flagged && (
-                <div>
-                  <Label>Flag Information</Label>
-                  <p className="text-sm text-red-600">
-                    Flagged {selectedListing.flag_count} times. Reason: {selectedListing.flag_reason}
-                  </p>
+              {selectedListing.is_flagged && selectedListing.flag_reason && (
+                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <Label className="text-red-400">Flag Reason</Label>
+                  <p className="text-white mt-1">{selectedListing.flag_reason}</p>
+                  <p className="text-sm text-red-400 mt-1">Flagged {selectedListing.flag_count} times</p>
                 </div>
               )}
-
-              {selectedListing.admin_notes && (
-                <div>
-                  <Label>Admin Notes</Label>
-                  <p className="text-sm">{selectedListing.admin_notes}</p>
-                </div>
-              )}
-
-              <div>
-                <Label htmlFor="admin-notes">Admin Notes</Label>
-                <Textarea
-                  id="admin-notes"
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  placeholder="Add notes about this listing..."
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setShowListingModal(false)}>
-                  Cancel
-                </Button>
-                {selectedListing.status === 'active' ? (
-                  <Button 
-                    onClick={() => handleListingAction('hide', selectedListing.id)}
-                    variant="destructive"
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? 'Hiding...' : 'Hide Listing'}
-                  </Button>
-                ) : (
-                  <Button 
-                    onClick={() => handleListingAction('show', selectedListing.id)}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? 'Showing...' : 'Show Listing'}
-                  </Button>
-                )}
-                <Button 
-                  onClick={() => handleListingAction('remove', selectedListing.id)}
-                  variant="destructive"
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? 'Removing...' : 'Remove Listing'}
-                </Button>
-              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Flag Reports Modal */}
-      <Dialog open={showFlagModal} onOpenChange={setShowFlagModal}>
-        <DialogContent className="max-w-4xl">
+      {/* Action Modal */}
+      <Dialog open={showActionModal} onOpenChange={setShowActionModal}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
-            <DialogTitle>Flag Reports</DialogTitle>
-            <DialogDescription>Review and manage flagged content</DialogDescription>
+            <DialogTitle>
+              {actionType === 'suspend' ? 'Suspend Listing' : 'Clear Flag'}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {actionType === 'suspend' 
+                ? 'This will suspend the listing and hide it from the marketplace.'
+                : 'This will clear the flag and dismiss the reports.'
+              }
+            </DialogDescription>
           </DialogHeader>
-          <div className="max-h-96 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Part</TableHead>
-                  <TableHead>Reporter</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {flagReports.map((flag) => (
-                  <TableRow key={flag.id}>
-                    <TableCell className="font-medium">{flag.part_name}</TableCell>
-                    <TableCell>{flag.reporter_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{flag.reason}</Badge>
-                    </TableCell>
-                    <TableCell>{flag.description}</TableCell>
-                    <TableCell>
-                      <Badge variant={
-                        flag.status === 'pending' ? 'secondary' :
-                        flag.status === 'resolved' ? 'default' : 'destructive'
-                      }>
-                        {flag.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{new Date(flag.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {flag.status === 'pending' && (
-                        <div className="flex space-x-2">
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleFlagAction(flag.id, 'resolve')}
-                            disabled={isProcessing}
-                          >
-                            Resolve
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleFlagAction(flag.id, 'dismiss')}
-                            disabled={isProcessing}
-                          >
-                            Dismiss
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-4">
+            {selectedListing && (
+              <div>
+                <Label className="text-slate-400">Listing</Label>
+                <p className="text-white">{selectedListing.name}</p>
+              </div>
+            )}
+            
+            {actionType === 'suspend' && (
+              <div>
+                <Label htmlFor="action-reason" className="text-slate-400">Reason</Label>
+                <Textarea
+                  id="action-reason"
+                  value={actionReason}
+                  onChange={(e) => setActionReason(e.target.value)}
+                  placeholder="Provide a reason for suspension..."
+                  className="bg-slate-800 border-slate-700 text-white mt-1"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowActionModal(false)} className="border-slate-700 text-slate-300">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAction}
+                disabled={isProcessing || (actionType === 'suspend' && !actionReason)}
+                variant={actionType === 'suspend' ? 'destructive' : 'default'}
+                className={actionType !== 'suspend' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              >
+                {isProcessing ? 'Processing...' : actionType === 'suspend' ? 'Suspend' : 'Clear Flag'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
