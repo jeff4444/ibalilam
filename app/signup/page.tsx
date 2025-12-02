@@ -133,6 +133,14 @@ export default function SignUpPage() {
       } else if (data.user) {
         console.log("User created successfully:", data.user)
         
+        // Check if user already exists - Supabase returns a user with empty identities array
+        // when trying to sign up with an existing email (for security/anti-enumeration)
+        if (data.user.identities && data.user.identities.length === 0) {
+          console.log("User already exists (empty identities)")
+          setError("An account with this email already exists. Please sign in instead.")
+          return
+        }
+        
         // The user profile should be created automatically by the database trigger
         // Just redirect the user - no need to manually create profile
         
@@ -142,7 +150,7 @@ export default function SignUpPage() {
           router.push("/dashboard")
         } else {
           console.log("Email confirmation required")
-          setError("Please check your email for a confirmation link before signing in.")
+          setError("Account created! Please check your email for a confirmation link before signing in.")
         }
       }
     } catch (err) {
