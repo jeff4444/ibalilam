@@ -17,6 +17,9 @@ export interface ShopStats {
   repeat_customer_rate: number
   locked_balance: number
   available_balance: number
+  // Wallet balances (from user_wallets table)
+  wallet_available_balance: number
+  wallet_locked_balance: number
 }
 
 export interface Part {
@@ -128,6 +131,8 @@ export function useShop() {
             repeat_customer_rate: 0,
             locked_balance: 0,
             available_balance: 0,
+            wallet_available_balance: 0,
+            wallet_locked_balance: 0,
           })
           setOriginalParts([])
           setRefurbishedParts([])
@@ -150,6 +155,20 @@ export function useShop() {
         .eq('part_type', 'refurbished')
         .eq('status', 'sold')
 
+      // Get user wallet data
+      let walletAvailableBalance = 0
+      let walletLockedBalance = 0
+      const { data: wallet } = await supabase
+        .from('user_wallets')
+        .select('available_balance, locked_balance')
+        .eq('user_id', user.id)
+        .single()
+
+      if (wallet) {
+        walletAvailableBalance = parseFloat(wallet.available_balance?.toString() || '0')
+        walletLockedBalance = parseFloat(wallet.locked_balance?.toString() || '0')
+      }
+
       // Set shop stats from shop data
       setShopStats({
         name: shop.name || 'My Shop',
@@ -166,6 +185,8 @@ export function useShop() {
         repeat_customer_rate: shop.repeat_customer_rate || 0,
         locked_balance: shop.locked_balance || 0,
         available_balance: shop.available_balance || 0,
+        wallet_available_balance: walletAvailableBalance,
+        wallet_locked_balance: walletLockedBalance,
       })
 
       // Get original parts

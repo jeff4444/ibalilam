@@ -381,7 +381,8 @@ export default function DashboardPage() {
 
         {/* Stats Cards */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mb-2">
-          <Card className="border-l-4 border-l-emerald-500">
+          <Link href="/wallet" className="block">
+            <Card className="border-l-4 border-l-emerald-500 hover:bg-muted/50 transition-colors cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Available Balance
@@ -394,20 +395,22 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-emerald-600">
-                R {shopStats?.available_balance?.toLocaleString(
+                  R {(shopStats?.wallet_available_balance ?? shopStats?.available_balance ?? 0).toLocaleString(
                   undefined,
                   {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   }
-                ) || '0.00'}
+                  )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Ready for withdrawal
+                  Ready for withdrawal • Click to manage wallet
               </p>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-amber-500">
+          </Link>
+          <Link href="/wallet" className="block">
+            <Card className="border-l-4 border-l-amber-500 hover:bg-muted/50 transition-colors cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Locked Balance
@@ -420,19 +423,20 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-amber-600">
-                R {shopStats?.locked_balance?.toLocaleString(
+                  R {(shopStats?.wallet_locked_balance ?? shopStats?.locked_balance ?? 0).toLocaleString(
                   undefined,
                   {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   }
-                ) || '0.00'}
+                  )}
               </div>
               <p className="text-xs text-muted-foreground">
                 Pending delivery confirmation
               </p>
             </CardContent>
           </Card>
+          </Link>
           {/* <Card className="border-l-4 border-l-chart-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">

@@ -26,7 +26,8 @@ import {
   Menu,
   LogOut,
   Home,
-  Shield
+  Shield,
+  ArrowUpFromLine
 } from 'lucide-react'
 
 interface SidebarContextType {
@@ -47,6 +48,7 @@ const navItems = [
   { name: 'Listings', href: '/admin/listings', icon: Package },
   { name: 'Orders', href: '/admin/orders', icon: ShoppingCart },
   { name: 'Transactions', href: '/admin/transactions', icon: CreditCard },
+  { name: 'Withdrawals', href: '/admin/withdrawals', icon: ArrowUpFromLine },
   { name: 'Wallet', href: '/admin/wallet', icon: Wallet },
   { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/admin/settings', icon: Settings },

@@ -171,7 +171,7 @@ export async function PATCH(
       )
     }
 
-    // If order was marked as delivered, release escrow funds
+    // If order was marked as delivered, release escrow funds from user wallet
     if (status === 'delivered' && existingOrder.status !== 'delivered') {
       try {
         // Get the transaction for this order to find the seller_amount
@@ -186,42 +186,80 @@ export async function PATCH(
         } else if (transaction && transaction.escrow_status === 'held') {
           const sellerAmount = parseFloat(transaction.seller_amount?.toString() || "0")
 
-          // Get current shop balances
-          const { data: currentShop, error: fetchShopError } = await supabase
-            .from("shops")
-            .select("locked_balance, available_balance")
-            .eq("id", shop.id)
+          // Get seller's wallet
+          const { data: wallet, error: walletError } = await supabase
+            .from("user_wallets")
+            .select("id, locked_balance, available_balance")
+            .eq("user_id", user.id)
             .single()
 
-          if (fetchShopError) {
-            console.error("Error fetching shop for escrow release:", fetchShopError)
-          } else if (currentShop) {
-            const currentLockedBalance = parseFloat(currentShop.locked_balance?.toString() || "0")
-            const currentAvailableBalance = parseFloat(currentShop.available_balance?.toString() || "0")
+          if (walletError) {
+            console.error("Error fetching wallet for escrow release:", walletError)
+          } else if (wallet) {
+            const currentLockedBalance = parseFloat(wallet.locked_balance?.toString() || "0")
+            const currentAvailableBalance = parseFloat(wallet.available_balance?.toString() || "0")
 
             // Calculate new balances (ensure locked_balance doesn't go negative)
             const amountToRelease = Math.min(sellerAmount, currentLockedBalance)
             const newLockedBalance = currentLockedBalance - amountToRelease
             const newAvailableBalance = currentAvailableBalance + amountToRelease
 
-            // Update shop balances
-            const { error: balanceUpdateError } = await supabase
-              .from("shops")
+            // Update wallet balances
+            const { error: walletUpdateError } = await supabase
+              .from("user_wallets")
               .update({
                 locked_balance: newLockedBalance,
                 available_balance: newAvailableBalance,
                 updated_at: new Date().toISOString()
               })
-              .eq("id", shop.id)
+              .eq("id", wallet.id)
 
-            if (balanceUpdateError) {
-              console.error("Error releasing escrow funds:", balanceUpdateError)
+            if (walletUpdateError) {
+              console.error("Error releasing wallet escrow funds:", walletUpdateError)
             } else {
+              // Create wallet transaction record for escrow release
+              await supabase
+                .from("wallet_transactions")
+                .insert({
+                  wallet_id: wallet.id,
+                  transaction_type: "escrow_release",
+                  amount: amountToRelease,
+                  status: "completed",
+                  reference_id: orderId,
+                  reference_type: "order",
+                  description: `Escrow released - Order delivered`,
+                  balance_after: newAvailableBalance
+                })
+
               // Update transaction escrow_status to released
               await supabase
                 .from("transactions")
                 .update({ escrow_status: "released" })
                 .eq("id", transaction.id)
+            }
+          }
+
+          // Also update shop balances for backward compatibility
+          const { data: currentShop, error: fetchShopError } = await supabase
+            .from("shops")
+            .select("locked_balance, available_balance")
+            .eq("id", shop.id)
+            .single()
+
+          if (!fetchShopError && currentShop) {
+            const shopLockedBalance = parseFloat(currentShop.locked_balance?.toString() || "0")
+            const shopAvailableBalance = parseFloat(currentShop.available_balance?.toString() || "0")
+            const shopAmountToRelease = Math.min(sellerAmount, shopLockedBalance)
+
+            await supabase
+              .from("shops")
+              .update({
+                locked_balance: shopLockedBalance - shopAmountToRelease,
+                available_balance: shopAvailableBalance + shopAmountToRelease,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", shop.id)
+          }
 
               // Update shop_analytics total_sales for historical tracking
               const today = new Date().toISOString().split("T")[0]
@@ -236,7 +274,7 @@ export async function PATCH(
                 const currentTotalSales = parseFloat(existingAnalytics.total_sales?.toString() || "0")
                 await supabase
                   .from("shop_analytics")
-                  .update({ total_sales: currentTotalSales + amountToRelease })
+              .update({ total_sales: currentTotalSales + sellerAmount })
                   .eq("shop_id", shop.id)
                   .eq("date", today)
               } else if (analyticsError?.code === "PGRST116") {
@@ -246,10 +284,8 @@ export async function PATCH(
                   .insert({
                     shop_id: shop.id,
                     date: today,
-                    total_sales: amountToRelease,
+                total_sales: sellerAmount,
                   })
-              }
-            }
           }
         }
       } catch (escrowError) {

@@ -184,36 +184,91 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Add funds to locked_balance for each shop (escrow until delivery)
+        // Add funds to seller's user wallet escrow (locked_balance) for each shop
         try {
           for (const [shopId, transactionData] of shopTransactionMap.entries()) {
-            // Get current locked_balance and update it
-            const { data: currentShop, error: fetchShopError } = await supabase
+            // Get the shop owner's user_id
+            const { data: shop, error: fetchShopError } = await supabase
               .from("shops")
-              .select("locked_balance")
+              .select("user_id, locked_balance")
               .eq("id", shopId)
               .single()
 
-            if (fetchShopError) {
+            if (fetchShopError || !shop) {
               console.error(`Error fetching shop ${shopId}:`, fetchShopError)
-            } else {
-              const currentLockedBalance = parseFloat(currentShop?.locked_balance?.toString() || "0")
+              continue
+            }
+
+            const sellerUserId = shop.user_id
+
+            // Get or create seller's wallet
+            let { data: wallet, error: walletError } = await supabase
+              .from("user_wallets")
+              .select("id, locked_balance")
+              .eq("user_id", sellerUserId)
+              .single()
+
+            if (walletError && walletError.code === "PGRST116") {
+              // Wallet doesn't exist, create one
+              const { data: newWallet, error: createError } = await supabase
+                .from("user_wallets")
+                .insert({ user_id: sellerUserId })
+                .select("id, locked_balance")
+                .single()
+
+              if (createError) {
+                console.error(`Error creating wallet for user ${sellerUserId}:`, createError)
+                continue
+              }
+              wallet = newWallet
+            } else if (walletError) {
+              console.error(`Error fetching wallet for user ${sellerUserId}:`, walletError)
+              continue
+            }
+
+            if (wallet) {
+              const currentLockedBalance = parseFloat(wallet.locked_balance?.toString() || "0")
               const newLockedBalance = currentLockedBalance + transactionData.sellerAmount
 
-              const { error: updateError } = await supabase
-                .from("shops")
+              // Update wallet locked_balance
+              const { error: updateWalletError } = await supabase
+                .from("user_wallets")
                 .update({ 
                   locked_balance: newLockedBalance,
                   updated_at: new Date().toISOString()
                 })
-                .eq("id", shopId)
+                .eq("id", wallet.id)
 
-              if (updateError) {
-                console.error(`Error updating locked_balance for shop ${shopId}:`, updateError)
+              if (updateWalletError) {
+                console.error(`Error updating wallet locked_balance for user ${sellerUserId}:`, updateWalletError)
+              } else {
+                // Create wallet transaction record for escrow hold
+                await supabase
+                  .from("wallet_transactions")
+                  .insert({
+                    wallet_id: wallet.id,
+                    transaction_type: "escrow_hold",
+                    amount: transactionData.sellerAmount,
+                    status: "completed",
+                    reference_id: orderId,
+                    reference_type: "order",
+                    description: `Sale payment held in escrow - Order ${orderId?.slice(0, 8)}`,
+                    balance_after: newLockedBalance
+                  })
               }
+
+              // Also update shop locked_balance for backward compatibility
+              const currentShopLockedBalance = parseFloat(shop.locked_balance?.toString() || "0")
+              await supabase
+                .from("shops")
+                .update({ 
+                  locked_balance: currentShopLockedBalance + transactionData.sellerAmount,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", shopId)
             }
 
-            // Also update shop_analytics for order tracking (but not total_sales - that happens on delivery)
+            // Update shop_analytics for order tracking (but not total_sales - that happens on delivery)
             const today = new Date().toISOString().split("T")[0]
             const { data: existingAnalytics, error: fetchError } = await supabase
               .from("shop_analytics")
@@ -248,7 +303,7 @@ export async function POST(req: NextRequest) {
             }
           }
         } catch (error) {
-          console.error("Error updating locked balance:", error)
+          console.error("Error updating wallet escrow balance:", error)
           // Don't fail the payment notification, just log the error
         }
 

@@ -70,6 +70,9 @@ export function MainNavbar() {
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
               Messages
             </Link>
+            <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/wallet">
+              Wallet
+            </Link>
             {isSeller && isFicaVerified && (
               <>
                 <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
