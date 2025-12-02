@@ -28,7 +28,6 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { MainNavbar } from "@/components/navbar"
 import { useAuth } from "@/hooks/use-auth"
 import { useWallet } from "@/hooks/use-wallet"
@@ -55,6 +54,17 @@ const transactionTypeColors: Record<string, string> = {
   commission_deduction: "bg-gray-100 text-gray-800 border-gray-200",
   refund: "bg-purple-100 text-purple-800 border-purple-200",
   adjustment: "bg-slate-100 text-slate-800 border-slate-200",
+}
+
+const transactionTypeAmountColors: Record<string, string> = {
+  deposit: "text-emerald-600",
+  withdrawal: "text-red-600",
+  escrow_hold: "text-amber-600",
+  escrow_release: "text-emerald-600",
+  sale_credit: "text-blue-600",
+  commission_deduction: "text-gray-600",
+  refund: "text-purple-600",
+  adjustment: "text-slate-600",
 }
 
 const statusColors: Record<string, string> = {
@@ -430,7 +440,7 @@ export default function WalletPage() {
                     </div>
                     <div className="text-right">
                       <div className={`text-lg font-semibold ${
-                        transaction.amount > 0 ? 'text-emerald-600' : 'text-red-600'
+                        transaction.amount > 0 ? transactionTypeAmountColors[transaction.type] : 'text-red-600'
                       }`}>
                         {transaction.amount > 0 ? '+' : ''}R {Math.abs(transaction.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </div>

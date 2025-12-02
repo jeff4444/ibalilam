@@ -268,7 +268,7 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
       }
 
       // Transform the data to match our Part interface
-      const transformedParts = data?.map(part => {
+      const transformedParts = data?.map((part: any) => {
         // Handle both RPC function result and traditional query result
         const isRpcResult = part.shop_name !== undefined
         const shopData = isRpcResult ? part : (part.shops as any)
