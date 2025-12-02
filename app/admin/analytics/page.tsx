@@ -171,7 +171,7 @@ export default function AdminAnalyticsPage() {
               <SelectItem value="90">Last 90 days</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={fetchAnalytics} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <Button onClick={fetchAnalytics} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>

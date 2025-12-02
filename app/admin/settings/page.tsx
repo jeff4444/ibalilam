@@ -337,7 +337,7 @@ export default function AdminSettingsPage() {
           <h1 className="text-3xl font-bold text-white">Settings</h1>
           <p className="text-slate-400 mt-1">Configure platform settings, commissions, and features</p>
         </div>
-        <Button onClick={fetchAllSettings} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchAllSettings} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>

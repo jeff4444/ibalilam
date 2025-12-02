@@ -65,12 +65,34 @@ export default function AdminUsersPage() {
   const [suspensionReason, setSuspensionReason] = useState('')
   const [suspensionDays, setSuspensionDays] = useState(7)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [statusCounts, setStatusCounts] = useState({ pendingFica: 0, verifiedFica: 0, suspended: 0 })
   
   const supabase = createClient()
 
   useEffect(() => {
+    fetchStatusCounts()
+  }, [])
+
+  useEffect(() => {
     fetchUsers()
   }, [searchTerm, roleFilter, ficaFilter, statusFilter, pagination.page])
+
+  const fetchStatusCounts = async () => {
+    try {
+      const response = await fetch('/api/admin/users?limit=1000')
+      const data = await response.json()
+      
+      if (response.ok && data.users) {
+        setStatusCounts({
+          pendingFica: data.users.filter((u: User) => u.fica_status === 'pending').length,
+          verifiedFica: data.users.filter((u: User) => u.fica_status === 'verified').length,
+          suspended: data.users.filter((u: User) => u.is_suspended).length
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching status counts:', error)
+    }
+  }
 
   const fetchUsers = async () => {
     try {
@@ -121,6 +143,7 @@ export default function AdminUsersPage() {
         setSelectedUser(null)
         setRejectionReason('')
         fetchUsers()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error processing FICA action:', error)
@@ -154,6 +177,7 @@ export default function AdminUsersPage() {
         setSelectedUser(null)
         setSuspensionReason('')
         fetchUsers()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error suspending user:', error)
@@ -177,6 +201,7 @@ export default function AdminUsersPage() {
 
       if (response.ok) {
         fetchUsers()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error unsuspending user:', error)
@@ -206,7 +231,7 @@ export default function AdminUsersPage() {
           <h1 className="text-3xl font-bold text-white">Users</h1>
           <p className="text-slate-400 mt-1">Manage platform users and their accounts</p>
         </div>
-        <Button onClick={fetchUsers} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchUsers} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>
@@ -230,7 +255,7 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-4">
               <Clock className="h-8 w-8 text-yellow-500" />
               <div>
-                <p className="text-2xl font-bold text-white">{users.filter(u => u.fica_status === 'pending').length}</p>
+                <p className="text-2xl font-bold text-white">{statusCounts.pendingFica}</p>
                 <p className="text-sm text-slate-400">Pending FICA</p>
               </div>
             </div>
@@ -241,7 +266,7 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-4">
               <CheckCircle className="h-8 w-8 text-emerald-500" />
               <div>
-                <p className="text-2xl font-bold text-white">{users.filter(u => u.fica_status === 'verified').length}</p>
+                <p className="text-2xl font-bold text-white">{statusCounts.verifiedFica}</p>
                 <p className="text-sm text-slate-400">Verified</p>
               </div>
             </div>
@@ -252,7 +277,7 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-4">
               <UserX className="h-8 w-8 text-red-500" />
               <div>
-                <p className="text-2xl font-bold text-white">{users.filter(u => u.is_suspended).length}</p>
+                <p className="text-2xl font-bold text-white">{statusCounts.suspended}</p>
                 <p className="text-sm text-slate-400">Suspended</p>
               </div>
             </div>

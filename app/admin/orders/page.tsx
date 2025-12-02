@@ -83,10 +83,34 @@ export default function AdminOrdersPage() {
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [newStatus, setNewStatus] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [statusCounts, setStatusCounts] = useState({ pending: 0, processing: 0, shipped: 0, delivered: 0 })
+
+  useEffect(() => {
+    fetchStatusCounts()
+  }, [])
 
   useEffect(() => {
     fetchOrders()
   }, [searchTerm, statusFilter, paymentFilter, pagination.page])
+
+  const fetchStatusCounts = async () => {
+    try {
+      // Fetch all orders to get accurate status counts
+      const response = await fetch('/api/admin/orders?limit=1000')
+      const data = await response.json()
+      
+      if (response.ok && data.orders) {
+        setStatusCounts({
+          pending: data.orders.filter((o: Order) => o.status === 'pending').length,
+          processing: data.orders.filter((o: Order) => o.status === 'processing').length,
+          shipped: data.orders.filter((o: Order) => o.status === 'shipped').length,
+          delivered: data.orders.filter((o: Order) => o.status === 'delivered').length
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching status counts:', error)
+    }
+  }
 
   const fetchOrders = async () => {
     try {
@@ -136,6 +160,7 @@ export default function AdminOrdersPage() {
         setSelectedOrder(null)
         setNewStatus('')
         fetchOrders()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error updating order:', error)
@@ -208,10 +233,10 @@ export default function AdminOrdersPage() {
     }
   }
 
-  const pendingOrders = orders.filter(o => o.status === 'pending').length
-  const processingOrders = orders.filter(o => o.status === 'processing').length
-  const shippedOrders = orders.filter(o => o.status === 'shipped').length
-  const deliveredOrders = orders.filter(o => o.status === 'delivered').length
+  const pendingOrders = statusCounts.pending
+  const processingOrders = statusCounts.processing
+  const shippedOrders = statusCounts.shipped
+  const deliveredOrders = statusCounts.delivered
 
   return (
     <div className="p-6 space-y-6">
@@ -221,7 +246,7 @@ export default function AdminOrdersPage() {
           <h1 className="text-3xl font-bold text-white">Orders</h1>
           <p className="text-slate-400 mt-1">Manage platform orders and shipments</p>
         </div>
-        <Button onClick={fetchOrders} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchOrders} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>

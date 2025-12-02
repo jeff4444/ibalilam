@@ -245,7 +245,7 @@ export default function AdminWithdrawalsPage() {
           <h1 className="text-3xl font-bold text-white">Withdrawal Requests</h1>
           <p className="text-slate-400 mt-1">Review and process user withdrawal requests</p>
         </div>
-        <Button onClick={fetchWithdrawals} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchWithdrawals} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>
@@ -268,28 +268,24 @@ export default function AdminWithdrawalsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border-yellow-500/30">
+        <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                <Clock className="h-6 w-6 text-yellow-400" />
-              </div>
+              <Clock className="h-8 w-8 text-yellow-500" />
               <div>
                 <p className="text-2xl font-bold text-white">{stats.pendingCount}</p>
-                <p className="text-sm text-yellow-400">Pending Requests</p>
+                <p className="text-sm text-slate-400">Pending Requests</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 border-orange-500/30">
+        <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-orange-500/20 flex items-center justify-center">
-                <ArrowUpFromLine className="h-6 w-6 text-orange-400" />
-              </div>
+              <ArrowUpFromLine className="h-8 w-8 text-orange-500" />
               <div>
                 <p className="text-2xl font-bold text-white">{formatCurrency(stats.pendingTotal)}</p>
-                <p className="text-sm text-orange-400">Pending Total Amount</p>
+                <p className="text-sm text-slate-400">Pending Total Amount</p>
               </div>
             </div>
           </CardContent>

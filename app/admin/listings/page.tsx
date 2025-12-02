@@ -79,10 +79,32 @@ export default function AdminListingsPage() {
   const [actionType, setActionType] = useState<'suspend' | 'clear_flag'>('suspend')
   const [actionReason, setActionReason] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [statusCounts, setStatusCounts] = useState({ active: 0, draft: 0, flagged: 0 })
+
+  useEffect(() => {
+    fetchStatusCounts()
+  }, [])
 
   useEffect(() => {
     fetchListings()
   }, [searchTerm, statusFilter, categoryFilter, flaggedOnly, pagination.page])
+
+  const fetchStatusCounts = async () => {
+    try {
+      const response = await fetch('/api/admin/listings?limit=1000')
+      const data = await response.json()
+      
+      if (response.ok && data.listings) {
+        setStatusCounts({
+          active: data.listings.filter((l: Listing) => l.status === 'active').length,
+          draft: data.listings.filter((l: Listing) => l.status === 'draft').length,
+          flagged: data.listings.filter((l: Listing) => l.is_flagged).length
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching status counts:', error)
+    }
+  }
 
   const fetchListings = async () => {
     try {
@@ -133,6 +155,7 @@ export default function AdminListingsPage() {
         setSelectedListing(null)
         setActionReason('')
         fetchListings()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error processing action:', error)
@@ -156,6 +179,7 @@ export default function AdminListingsPage() {
 
       if (response.ok) {
         fetchListings()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error approving listing:', error)
@@ -190,9 +214,9 @@ export default function AdminListingsPage() {
     }
   }
 
-  const activeListings = listings.filter(l => l.status === 'active').length
-  const draftListings = listings.filter(l => l.status === 'draft').length
-  const flaggedListings = listings.filter(l => l.is_flagged).length
+  const activeListings = statusCounts.active
+  const draftListings = statusCounts.draft
+  const flaggedListings = statusCounts.flagged
 
   return (
     <div className="p-6 space-y-6">
@@ -202,7 +226,7 @@ export default function AdminListingsPage() {
           <h1 className="text-3xl font-bold text-white">Listings</h1>
           <p className="text-slate-400 mt-1">Manage platform listings and moderate content</p>
         </div>
-        <Button onClick={fetchListings} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchListings} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>

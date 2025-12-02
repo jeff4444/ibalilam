@@ -72,10 +72,34 @@ export default function AdminTransactionsPage() {
   const [actionType, setActionType] = useState<'release' | 'refund' | 'dispute'>('release')
   const [actionReason, setActionReason] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [statsCounts, setStatsCounts] = useState({ totalAmount: 0, totalCommissions: 0, pendingEscrow: 0, completedCount: 0 })
+
+  useEffect(() => {
+    fetchStatsCounts()
+  }, [])
 
   useEffect(() => {
     fetchTransactions()
   }, [searchTerm, statusFilter, escrowFilter, pagination.page])
+
+  const fetchStatsCounts = async () => {
+    try {
+      const response = await fetch('/api/admin/transactions?limit=1000')
+      const data = await response.json()
+      
+      if (response.ok && data.transactions) {
+        const allTransactions = data.transactions as Transaction[]
+        setStatsCounts({
+          totalAmount: allTransactions.reduce((sum, t) => sum + t.amount, 0),
+          totalCommissions: allTransactions.reduce((sum, t) => sum + t.commission_amount, 0),
+          pendingEscrow: allTransactions.filter(t => t.escrow_status === 'held').reduce((sum, t) => sum + t.seller_amount, 0),
+          completedCount: allTransactions.filter(t => t.status === 'completed').length
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching stats counts:', error)
+    }
+  }
 
   const fetchTransactions = async () => {
     try {
@@ -125,6 +149,7 @@ export default function AdminTransactionsPage() {
         setSelectedTransaction(null)
         setActionReason('')
         fetchTransactions()
+        fetchStatsCounts()
       }
     } catch (error) {
       console.error('Error processing action:', error)
@@ -176,10 +201,10 @@ export default function AdminTransactionsPage() {
     }
   }
 
-  const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0)
-  const totalCommissions = transactions.reduce((sum, t) => sum + t.commission_amount, 0)
-  const pendingEscrow = transactions.filter(t => t.escrow_status === 'held').reduce((sum, t) => sum + t.seller_amount, 0)
-  const completedTransactions = transactions.filter(t => t.status === 'completed').length
+  const totalAmount = statsCounts.totalAmount
+  const totalCommissions = statsCounts.totalCommissions
+  const pendingEscrow = statsCounts.pendingEscrow
+  const completedTransactions = statsCounts.completedCount
 
   return (
     <div className="p-6 space-y-6">
@@ -189,7 +214,7 @@ export default function AdminTransactionsPage() {
           <h1 className="text-3xl font-bold text-white">Transactions</h1>
           <p className="text-slate-400 mt-1">Manage payments, escrow, and refunds</p>
         </div>
-        <Button onClick={fetchTransactions} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchTransactions} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>

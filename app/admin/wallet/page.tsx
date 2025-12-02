@@ -216,11 +216,11 @@ export default function AdminWalletPage() {
           <p className="text-slate-400 mt-1">Manage platform finances, commissions, and payouts</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowAdjustmentModal(true)} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <Button onClick={() => setShowAdjustmentModal(true)} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
             <Plus className="mr-2 h-4 w-4" />
             Adjustment
           </Button>
-          <Button onClick={fetchWalletData} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <Button onClick={fetchWalletData} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
@@ -229,54 +229,46 @@ export default function AdminWalletPage() {
 
       {/* Wallet Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30">
+        <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <DollarSign className="h-6 w-6 text-emerald-400" />
-              </div>
+              <DollarSign className="h-8 w-8 text-emerald-500" />
               <div>
                 <p className="text-2xl font-bold text-white">{formatCurrency(wallet?.availableBalance || 0)}</p>
-                <p className="text-sm text-emerald-400">Available Balance</p>
+                <p className="text-sm text-slate-400">Available Balance</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border-yellow-500/30">
+        <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                <Lock className="h-6 w-6 text-yellow-400" />
-              </div>
+              <Lock className="h-8 w-8 text-yellow-500" />
               <div>
                 <p className="text-2xl font-bold text-white">{formatCurrency(wallet?.lockedBalance || 0)}</p>
-                <p className="text-sm text-yellow-400">Locked (Escrow)</p>
+                <p className="text-sm text-slate-400">Locked (Escrow)</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border-blue-500/30">
+        <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-blue-400" />
-              </div>
+              <TrendingUp className="h-8 w-8 text-blue-500" />
               <div>
                 <p className="text-2xl font-bold text-white">{formatCurrency(wallet?.totalCommissions || 0)}</p>
-                <p className="text-sm text-blue-400">Total Commissions</p>
+                <p className="text-sm text-slate-400">Total Commissions</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border-purple-500/30">
+        <Card className="bg-slate-900 border-slate-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-purple-500/20 flex items-center justify-center">
-                <TrendingDown className="h-6 w-6 text-purple-400" />
-              </div>
+              <TrendingDown className="h-8 w-8 text-purple-500" />
               <div>
                 <p className="text-2xl font-bold text-white">{formatCurrency(wallet?.totalPayouts || 0)}</p>
-                <p className="text-sm text-purple-400">Total Payouts</p>
+                <p className="text-sm text-slate-400">Total Payouts</p>
               </div>
             </div>
           </CardContent>

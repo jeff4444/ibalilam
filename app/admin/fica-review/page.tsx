@@ -62,12 +62,36 @@ export default function FicaReviewPage() {
   const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve')
   const [rejectionReason, setRejectionReason] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [statusCounts, setStatusCounts] = useState({ pending: 0, verified: 0, rejected: 0 })
   
   const supabase = createClient()
 
   useEffect(() => {
+    fetchStatusCounts()
+  }, [])
+
+  useEffect(() => {
     fetchFicaUsers()
   }, [searchTerm, statusFilter])
+
+  const fetchStatusCounts = async () => {
+    try {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('fica_status')
+        .not('fica_status', 'is', null)
+      
+      if (data) {
+        setStatusCounts({
+          pending: data.filter(u => u.fica_status === 'pending').length,
+          verified: data.filter(u => u.fica_status === 'verified').length,
+          rejected: data.filter(u => u.fica_status === 'rejected').length
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching status counts:', error)
+    }
+  }
 
   const fetchFicaUsers = async () => {
     try {
@@ -144,6 +168,7 @@ export default function FicaReviewPage() {
         setSelectedUser(null)
         setRejectionReason('')
         fetchFicaUsers()
+        fetchStatusCounts()
       }
     } catch (error) {
       console.error('Error processing FICA action:', error)
@@ -178,9 +203,9 @@ export default function FicaReviewPage() {
     }
   }
 
-  const pendingCount = users.filter(u => u.fica_status === 'pending').length
-  const verifiedCount = users.filter(u => u.fica_status === 'verified').length
-  const rejectedCount = users.filter(u => u.fica_status === 'rejected').length
+  const pendingCount = statusCounts.pending
+  const verifiedCount = statusCounts.verified
+  const rejectedCount = statusCounts.rejected
 
   return (
     <div className="p-6 space-y-6">
@@ -190,7 +215,7 @@ export default function FicaReviewPage() {
           <h1 className="text-3xl font-bold text-white">FICA Review</h1>
           <p className="text-slate-400 mt-1">Review and verify user FICA documents</p>
         </div>
-        <Button onClick={fetchFicaUsers} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800">
+        <Button onClick={fetchFicaUsers} variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white">
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>
