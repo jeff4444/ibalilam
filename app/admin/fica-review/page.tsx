@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/utils/supabase/client'
@@ -18,8 +17,6 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   Eye,
   ExternalLink,
   FileText,
@@ -57,11 +54,9 @@ export default function FicaReviewPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState(initialStatus)
-  const [selectedUser, setSelectedUser] = useState<FicaUser | null>(null)
-  const [showReviewModal, setShowReviewModal] = useState(false)
-  const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve')
+  const [processingUserId, setProcessingUserId] = useState<string | null>(null)
+  const [rejectingUserId, setRejectingUserId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
   const [statusCounts, setStatusCounts] = useState({ pending: 0, verified: 0, rejected: 0 })
   
   const supabase = createClient()
@@ -147,33 +142,56 @@ export default function FicaReviewPage() {
     }
   }
 
-  const handleReviewAction = async () => {
-    if (!selectedUser) return
-
+  const handleQuickApprove = async (userId: string) => {
     try {
-      setIsProcessing(true)
+      setProcessingUserId(userId)
 
       const response = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: selectedUser.id,
-          action: reviewAction === 'approve' ? 'approve_fica' : 'reject_fica',
+          user_id: userId,
+          action: 'approve_fica'
+        })
+      })
+
+      if (response.ok) {
+        fetchFicaUsers()
+        fetchStatusCounts()
+      }
+    } catch (error) {
+      console.error('Error approving FICA:', error)
+    } finally {
+      setProcessingUserId(null)
+    }
+  }
+
+  const handleQuickReject = async (userId: string) => {
+    if (!rejectionReason.trim()) return
+
+    try {
+      setProcessingUserId(userId)
+
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          action: 'reject_fica',
           rejection_reason: rejectionReason
         })
       })
 
       if (response.ok) {
-        setShowReviewModal(false)
-        setSelectedUser(null)
+        setRejectingUserId(null)
         setRejectionReason('')
         fetchFicaUsers()
         fetchStatusCounts()
       }
     } catch (error) {
-      console.error('Error processing FICA action:', error)
+      console.error('Error rejecting FICA:', error)
     } finally {
-      setIsProcessing(false)
+      setProcessingUserId(null)
     }
   }
 
@@ -337,29 +355,32 @@ export default function FicaReviewPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { setSelectedUser(user); setShowReviewModal(true) }}
-                      className="border-slate-700 text-slate-300 hover:bg-slate-800"
-                    >
-                      <Eye className="mr-2 h-4 w-4" />
-                      Review
-                    </Button>
+                    <Link href={`/admin/fica-review/${user.id}`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:border-slate-500 hover:text-white"
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        View Details
+                      </Button>
+                    </Link>
                     {user.fica_status === 'pending' && (
                       <>
                         <Button
                           size="sm"
-                          onClick={() => { setSelectedUser(user); setReviewAction('approve'); setShowReviewModal(true) }}
+                          onClick={() => handleQuickApprove(user.id)}
+                          disabled={processingUserId === user.id}
                           className="bg-emerald-600 hover:bg-emerald-700"
                         >
                           <CheckCircle className="mr-2 h-4 w-4" />
-                          Approve
+                          {processingUserId === user.id ? 'Processing...' : 'Approve'}
                         </Button>
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => { setSelectedUser(user); setReviewAction('reject'); setShowReviewModal(true) }}
+                          onClick={() => setRejectingUserId(user.id)}
+                          disabled={processingUserId === user.id}
                         >
                           <XCircle className="mr-2 h-4 w-4" />
                           Reject
@@ -393,123 +414,46 @@ export default function FicaReviewPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Inline Reject Form */}
+                {rejectingUserId === user.id && (
+                  <div className="mt-4 pt-4 border-t border-slate-800">
+                    <div className="space-y-3">
+                      <p className="text-sm text-slate-400">Rejection Reason</p>
+                      <Textarea
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        placeholder="Please provide a reason for rejection..."
+                        className="bg-slate-800 border-slate-700 text-white"
+                        rows={2}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setRejectingUserId(null); setRejectionReason('') }}
+                          className="border-slate-700 text-slate-300"
+                          disabled={processingUserId === user.id}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleQuickReject(user.id)}
+                          disabled={processingUserId === user.id || !rejectionReason.trim()}
+                        >
+                          {processingUserId === user.id ? 'Processing...' : 'Confirm Rejection'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))
         )}
       </div>
-
-      {/* Review Modal */}
-      <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>FICA Review - {selectedUser?.full_name}</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Review submitted documents and make a decision
-            </DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <div className="space-y-4">
-              {/* User Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-slate-400">Name</Label>
-                  <p className="text-white">{selectedUser.full_name}</p>
-                </div>
-                <div>
-                  <Label className="text-slate-400">Role</Label>
-                  <p className="text-white">{selectedUser.user_role}</p>
-                </div>
-                <div>
-                  <Label className="text-slate-400">Current Status</Label>
-                  <p className="text-white capitalize">{selectedUser.fica_status}</p>
-                </div>
-                <div>
-                  <Label className="text-slate-400">Submitted</Label>
-                  <p className="text-white">{new Date(selectedUser.created_at).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              {/* Documents */}
-              {selectedUser.documents && selectedUser.documents.length > 0 && (
-                <div>
-                  <Label className="text-slate-400">Documents</Label>
-                  <div className="grid gap-2 mt-2">
-                    {selectedUser.documents.map((doc) => (
-                      <a
-                        key={doc.id}
-                        href={doc.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-3 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
-                      >
-                        {getDocumentIcon(doc.document_type)}
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-white">{getDocumentLabel(doc.document_type)}</p>
-                          <p className="text-xs text-slate-500">{doc.file_name}</p>
-                        </div>
-                        <ExternalLink className="h-4 w-4 text-slate-500" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Action Selection */}
-              {selectedUser.fica_status === 'pending' && (
-                <div className="space-y-4 pt-4 border-t border-slate-800">
-                  <div className="flex gap-4">
-                    <Button
-                      variant={reviewAction === 'approve' ? 'default' : 'outline'}
-                      onClick={() => setReviewAction('approve')}
-                      className={reviewAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-slate-700 text-slate-300'}
-                    >
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Approve
-                    </Button>
-                    <Button
-                      variant={reviewAction === 'reject' ? 'destructive' : 'outline'}
-                      onClick={() => setReviewAction('reject')}
-                      className={reviewAction !== 'reject' ? 'border-slate-700 text-slate-300' : ''}
-                    >
-                      <XCircle className="mr-2 h-4 w-4" />
-                      Reject
-                    </Button>
-                  </div>
-
-                  {reviewAction === 'reject' && (
-                    <div>
-                      <Label htmlFor="rejection-reason" className="text-slate-400">Rejection Reason</Label>
-                      <Textarea
-                        id="rejection-reason"
-                        value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value)}
-                        placeholder="Please provide a reason for rejection..."
-                        className="bg-slate-800 border-slate-700 text-white mt-1"
-                        required
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setShowReviewModal(false)} className="border-slate-700 text-slate-300">
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleReviewAction}
-                      disabled={isProcessing || (reviewAction === 'reject' && !rejectionReason)}
-                      className={reviewAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
-                      variant={reviewAction === 'reject' ? 'destructive' : 'default'}
-                    >
-                      {isProcessing ? 'Processing...' : reviewAction === 'approve' ? 'Approve FICA' : 'Reject FICA'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

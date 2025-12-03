@@ -24,14 +24,18 @@ import { MainNavbar } from "@/components/navbar"
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isFicaLoading, setIsFicaLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [ficaError, setFicaError] = useState("")
+  const [ficaSuccess, setFicaSuccess] = useState("")
   const [userProfile, setUserProfile] = useState({
     firstName: "",
     lastName: "",
     email: "",
     phone: "",
     location: "",
+    address: "",
     bio: "",
     specializations: [] as string[],
     userRole: "visitor" as "visitor" | "buyer" | "seller" | "admin" | "support",
@@ -41,6 +45,10 @@ export default function ProfilePage() {
   const [shopProfile, setShopProfile] = useState({
     name: "",
     description: "",
+    registration_number: "",
+    owner_name: "",
+    owner_phone: "",
+    owner_email: "",
   })
   const [shopPolicies, setShopPolicies] = useState({
     return_policy: "",
@@ -61,7 +69,7 @@ export default function ProfilePage() {
   const router = useRouter()
   const { user, loading, signOut } = useAuth()
   const supabase = createClient()
-  const { ficaStatus } = useFica()
+  const { ficaStatus, documents: ficaDocuments } = useFica()
 
   // Redirect if not logged in
   useEffect(() => {
@@ -77,7 +85,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('user_profiles')
-            .select('first_name, last_name, phone, location, bio, specializations, user_role, fica_status, fica_rejection_reason')
+            .select('first_name, last_name, phone, location, address, bio, specializations, user_role, fica_status, fica_rejection_reason')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -93,6 +101,7 @@ export default function ProfilePage() {
               email: user.email || "",
               phone: data.phone || "",
               location: data.location || "",
+              address: data.address || "",
               bio: data.bio || "",
               specializations: data.specializations || [],
               userRole: data.user_role || "visitor",
@@ -107,6 +116,7 @@ export default function ProfilePage() {
               email: user.email || "",
               phone: "",
               location: "",
+              address: "",
               bio: "",
               specializations: [],
               userRole: "visitor",
@@ -130,7 +140,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('shops')
-            .select('name, description, rating, review_count, return_policy, shipping_policy, payment_policy, warranty_policy, privacy_policy, terms_of_service')
+            .select('name, description, rating, review_count, return_policy, shipping_policy, payment_policy, warranty_policy, privacy_policy, terms_of_service, registration_number, owner_name, owner_phone, owner_email')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -144,6 +154,10 @@ export default function ProfilePage() {
             setShopProfile({
               name: data.name || "",
               description: data.description || "",
+              registration_number: data.registration_number || "",
+              owner_name: data.owner_name || "",
+              owner_phone: data.owner_phone || "",
+              owner_email: data.owner_email || "",
             })
             setShopPolicies({
               return_policy: data.return_policy || "",
@@ -238,6 +252,7 @@ export default function ProfilePage() {
           last_name: userProfile.lastName,
           phone: userProfile.phone,
           location: userProfile.location,
+          address: userProfile.address,
           bio: userProfile.bio,
           specializations: userProfile.specializations,
         }, {
@@ -255,6 +270,10 @@ export default function ProfilePage() {
           user_id: user?.id,
           name: shopProfile.name,
           description: shopProfile.description,
+          registration_number: shopProfile.registration_number,
+          owner_name: shopProfile.owner_name,
+          owner_phone: shopProfile.owner_phone,
+          owner_email: shopProfile.owner_email,
           return_policy: shopPolicies.return_policy,
           shipping_policy: shopPolicies.shipping_policy,
           payment_policy: shopPolicies.payment_policy,
@@ -289,7 +308,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('user_profiles')
-            .select('first_name, last_name, phone, location, bio, specializations, user_role, fica_status, fica_rejection_reason')
+            .select('first_name, last_name, phone, location, address, bio, specializations, user_role, fica_status, fica_rejection_reason')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -300,6 +319,7 @@ export default function ProfilePage() {
               email: user.email || "",
               phone: data.phone || "",
               location: data.location || "",
+              address: data.address || "",
               bio: data.bio || "",
               specializations: data.specializations || [],
               userRole: data.user_role || "visitor",
@@ -318,6 +338,10 @@ export default function ProfilePage() {
       setShopProfile({
         name: shopData?.name || "",
         description: shopData?.description || "",
+        registration_number: shopData?.registration_number || "",
+        owner_name: shopData?.owner_name || "",
+        owner_phone: shopData?.owner_phone || "",
+        owner_email: shopData?.owner_email || "",
       })
       setShopPolicies({
         return_policy: shopData?.return_policy || "",
@@ -389,6 +413,102 @@ export default function ProfilePage() {
       setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleSaveFicaForm = async () => {
+    setIsFicaLoading(true)
+    setFicaError("")
+    setFicaSuccess("")
+
+    // Validate all required personal fields
+    const missingPersonalFields: string[] = []
+    if (!userProfile.firstName.trim()) missingPersonalFields.push("First Name")
+    if (!userProfile.lastName.trim()) missingPersonalFields.push("Last Name")
+    if (!userProfile.address.trim()) missingPersonalFields.push("Address")
+    if (!userProfile.phone.trim()) missingPersonalFields.push("Contact Number")
+
+    // Validate all required business fields
+    const missingBusinessFields: string[] = []
+    if (!shopProfile.name.trim()) missingBusinessFields.push("Business Name")
+    if (!shopProfile.registration_number.trim()) missingBusinessFields.push("Registration Number")
+    if (!shopProfile.owner_name.trim()) missingBusinessFields.push("Owner Name")
+    if (!shopProfile.owner_phone.trim()) missingBusinessFields.push("Owner Phone")
+    if (!shopProfile.owner_email.trim()) missingBusinessFields.push("Owner Email")
+
+    // Check for missing FICA documents
+    const requiredDocTypes = ['id_document', 'proof_of_address', 'id_selfie']
+    const uploadedDocTypes = ficaDocuments.map(doc => doc.document_type)
+    const missingDocuments = requiredDocTypes.filter(type => !uploadedDocTypes.includes(type as any))
+
+    const allMissingFields = [...missingPersonalFields, ...missingBusinessFields]
+    
+    if (allMissingFields.length > 0 || missingDocuments.length > 0) {
+      let errorMessage = ""
+      if (allMissingFields.length > 0) {
+        errorMessage += `Please fill in the following required fields: ${allMissingFields.join(", ")}.`
+      }
+      if (missingDocuments.length > 0) {
+        const docNames = missingDocuments.map(type => {
+          switch(type) {
+            case 'id_document': return 'ID Document'
+            case 'proof_of_address': return 'Proof of Address'
+            case 'id_selfie': return 'ID Selfie'
+            default: return type
+          }
+        })
+        if (errorMessage) errorMessage += " "
+        errorMessage += `Please upload the following documents: ${docNames.join(", ")}.`
+      }
+      setFicaError(errorMessage)
+      setIsFicaLoading(false)
+      return
+    }
+
+    try {
+      // Update user profile data
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: user?.id,
+          first_name: userProfile.firstName,
+          last_name: userProfile.lastName,
+          phone: userProfile.phone,
+          address: userProfile.address,
+        }, {
+          onConflict: 'user_id'
+        })
+
+      if (profileError) {
+        throw profileError
+      }
+
+      // Update shop data
+      const { error: shopError } = await supabase
+        .from('shops')
+        .upsert({
+          user_id: user?.id,
+          name: shopProfile.name,
+          registration_number: shopProfile.registration_number,
+          owner_name: shopProfile.owner_name,
+          owner_phone: shopProfile.owner_phone,
+          owner_email: shopProfile.owner_email,
+        }, {
+          onConflict: 'user_id'
+        })
+
+      if (shopError) {
+        throw shopError
+      }
+
+      setFicaSuccess("FICA information saved successfully!")
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setFicaSuccess(""), 3000)
+    } catch (err: any) {
+      setFicaError(err.message || "Failed to save FICA information. Please try again.")
+    } finally {
+      setIsFicaLoading(false)
     }
   }
 
@@ -850,17 +970,189 @@ export default function ProfilePage() {
 
               {userProfile.userRole === "seller" && (
                 <TabsContent value="fica" className="space-y-4">
+                  {/* FICA Form Alerts */}
+                  {ficaError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{ficaError}</AlertDescription>
+                    </Alert>
+                  )}
+                  {ficaSuccess && (
+                    <Alert className="border-green-200 bg-green-50 text-green-800">
+                      <AlertDescription>{ficaSuccess}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Personal Information Section */}
                   <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
                     <CardHeader>
-                      <CardTitle>FICA Verification</CardTitle>
+                      <CardTitle>Personal Information</CardTitle>
                       <CardDescription>
-                        Complete FICA verification to become a verified seller and access loan features
+                        Your personal details for FICA verification
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaFirstName">First Name <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaFirstName"
+                            value={userProfile.firstName}
+                            onChange={(e) => setUserProfile({ ...userProfile, firstName: e.target.value })}
+                            placeholder="Enter your first name"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaLastName">Last Name <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaLastName"
+                            value={userProfile.lastName}
+                            onChange={(e) => setUserProfile({ ...userProfile, lastName: e.target.value })}
+                            placeholder="Enter your last name"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ficaAddress">Address <span className="text-red-500">*</span></Label>
+                        <Textarea
+                          id="ficaAddress"
+                          value={userProfile.address}
+                          onChange={(e) => setUserProfile({ ...userProfile, address: e.target.value })}
+                          placeholder="Enter your full address"
+                          rows={2}
+                          required
+                          disabled={isFicaLoading}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaEmail">Email <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaEmail"
+                            type="email"
+                            value={userProfile.email}
+                            readOnly
+                            disabled
+                            className="bg-muted"
+                          />
+                          <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaPhone">Contact Number <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaPhone"
+                            type="tel"
+                            value={userProfile.phone}
+                            onChange={(e) => setUserProfile({ ...userProfile, phone: e.target.value })}
+                            placeholder="Enter your phone number"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Business Information Section */}
+                  <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
+                    <CardHeader>
+                      <CardTitle>Business Information</CardTitle>
+                      <CardDescription>
+                        Your business details for FICA verification
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaBusinessName">Business Name <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaBusinessName"
+                            value={shopProfile.name}
+                            onChange={(e) => setShopProfile({ ...shopProfile, name: e.target.value })}
+                            placeholder="Enter your business name"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaRegistrationNumber">Registration Number <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaRegistrationNumber"
+                            value={shopProfile.registration_number}
+                            onChange={(e) => setShopProfile({ ...shopProfile, registration_number: e.target.value })}
+                            placeholder="Enter your business registration number"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ficaOwnerName">Owner Name <span className="text-red-500">*</span></Label>
+                        <Input
+                          id="ficaOwnerName"
+                          value={shopProfile.owner_name}
+                          onChange={(e) => setShopProfile({ ...shopProfile, owner_name: e.target.value })}
+                          placeholder="Enter the business owner's full name"
+                          required
+                          disabled={isFicaLoading}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaOwnerPhone">Owner Phone <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaOwnerPhone"
+                            type="tel"
+                            value={shopProfile.owner_phone}
+                            onChange={(e) => setShopProfile({ ...shopProfile, owner_phone: e.target.value })}
+                            placeholder="Enter owner's phone number"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ficaOwnerEmail">Owner Email <span className="text-red-500">*</span></Label>
+                          <Input
+                            id="ficaOwnerEmail"
+                            type="email"
+                            value={shopProfile.owner_email}
+                            onChange={(e) => setShopProfile({ ...shopProfile, owner_email: e.target.value })}
+                            placeholder="Enter owner's email address"
+                            required
+                            disabled={isFicaLoading}
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* FICA Documents Section */}
+                  <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
+                    <CardHeader>
+                      <CardTitle>FICA Documents</CardTitle>
+                      <CardDescription>
+                        Upload required documents to complete FICA verification
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <FicaUpload />
                     </CardContent>
                   </Card>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={handleSaveFicaForm}
+                      disabled={isFicaLoading}
+                      className="px-8"
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      {isFicaLoading ? "Saving..." : "Save FICA Information"}
+                    </Button>
+                  </div>
                 </TabsContent>
               )}
 
