@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/utils/supabase/client'
 
 export interface PartDetail {
@@ -101,133 +102,138 @@ export interface RelatedPart {
   part_type: 'original' | 'refurbished'
 }
 
+// Query keys for cache management
+export const partQueryKeys = {
+  all: ['part'] as const,
+  detail: (partId: string) => ['part', 'detail', partId] as const,
+}
+
+// Fetch function for a single part
+async function fetchPart(supabase: ReturnType<typeof createClient>, partId: string): Promise<PartDetail> {
+  // Fetch the main part data with shop information
+  const { data: partData, error: partError } = await supabase
+    .from('parts')
+    .select(`
+      *,
+      shops!inner(
+        name,
+        description,
+        rating,
+        review_count,
+        total_sales,
+        active_listings
+      )
+    `)
+    .eq('id', partId)
+    .eq('status', 'active')
+    .single()
+
+  if (partError) {
+    throw new Error(`Failed to fetch part: ${partError.message}`)
+  }
+
+  if (!partData) {
+    throw new Error('Part not found')
+  }
+
+  // Transform the data to include shop information
+  const transformedPart = {
+    ...partData,
+    shop_name: (partData.shops as any)?.name,
+    shop_description: (partData.shops as any)?.description,
+    shop_rating: (partData.shops as any)?.rating,
+    shop_review_count: (partData.shops as any)?.review_count,
+    shop_total_sales: (partData.shops as any)?.total_sales,
+    shop_active_listings: (partData.shops as any)?.active_listings,
+  }
+
+  // Note: Reviews are at the shop level, not part level
+  // Shop reviews can be viewed on the seller's contact/profile page
+  const reviews: Review[] = []
+
+  // Fetch related parts (same category, different part)
+  let relatedParts: RelatedPart[] = []
+  try {
+    const { data: relatedData, error: relatedError } = await supabase
+      .from('parts')
+      .select(`
+        id,
+        name,
+        price,
+        image_url,
+        part_type,
+        shops!inner(
+          rating
+        )
+      `)
+      .eq('category', partData.category)
+      .neq('id', partId)
+      .eq('status', 'active')
+      .order('views', { ascending: false })
+      .limit(3)
+
+    if (!relatedError && relatedData) {
+      // Transform related parts data
+      relatedParts = relatedData.map(relatedPart => ({
+        id: relatedPart.id,
+        name: relatedPart.name,
+        price: relatedPart.price,
+        image_url: relatedPart.image_url,
+        shop_rating: (relatedPart.shops as any)?.rating || 0,
+        part_type: relatedPart.part_type,
+      }))
+    }
+  } catch (err) {
+    console.log('Related parts not available:', err)
+  }
+
+  // Update views count (optional - don't fail if this doesn't work)
+  try {
+    await supabase
+      .from('parts')
+      .update({ views: partData.views + 1 })
+      .eq('id', partId)
+  } catch (err) {
+    console.log('Could not update view count:', err)
+  }
+
+  return {
+    ...transformedPart,
+    reviews,
+    related_parts: relatedParts,
+    views: partData.views + 1, // Update the view count locally
+  }
+}
+
 export function usePart(partId: string) {
-  const [part, setPart] = useState<PartDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  
+  const queryClient = useQueryClient()
   const supabase = useMemo(() => createClient(), [])
 
-  const fetchPart = useCallback(async () => {
-    if (!partId) return
+  // Query for part data with 5-minute stale time
+  const {
+    data: part = null,
+    isLoading: loading,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: partQueryKeys.detail(partId),
+    queryFn: () => fetchPart(supabase, partId),
+    enabled: !!partId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes cache
+  })
 
-    try {
-      setLoading(true)
-      setError(null)
+  const refresh = useCallback(() => {
+    refetch()
+  }, [refetch])
 
-      // Fetch the main part data with shop information
-      const { data: partData, error: partError } = await supabase
-        .from('parts')
-        .select(`
-          *,
-          shops!inner(
-            name,
-            description,
-            rating,
-            review_count,
-            total_sales,
-            active_listings
-          )
-        `)
-        .eq('id', partId)
-        .eq('status', 'active')
-        .single()
-
-      if (partError) {
-        throw new Error(`Failed to fetch part: ${partError.message}`)
-      }
-
-      if (!partData) {
-        throw new Error('Part not found')
-      }
-
-      // Transform the data to include shop information
-      const transformedPart = {
-        ...partData,
-        shop_name: (partData.shops as any)?.name,
-        shop_description: (partData.shops as any)?.description,
-        shop_rating: (partData.shops as any)?.rating,
-        shop_review_count: (partData.shops as any)?.review_count,
-        shop_total_sales: (partData.shops as any)?.total_sales,
-        shop_active_listings: (partData.shops as any)?.active_listings,
-      }
-
-      // Note: Reviews are at the shop level, not part level
-      // Shop reviews can be viewed on the seller's contact/profile page
-      const reviews: any[] = []
-
-      // Fetch related parts (same category, different part)
-      let relatedParts: any[] = []
-      try {
-        const { data: relatedData, error: relatedError } = await supabase
-          .from('parts')
-          .select(`
-            id,
-            name,
-            price,
-            image_url,
-            part_type,
-            shops!inner(
-              rating
-            )
-          `)
-          .eq('category', partData.category)
-          .neq('id', partId)
-          .eq('status', 'active')
-          .order('views', { ascending: false })
-          .limit(3)
-
-        if (relatedError) {
-          console.error('Error fetching related parts:', relatedError)
-        } else {
-          // Transform related parts data
-          relatedParts = relatedData?.map(relatedPart => ({
-            id: relatedPart.id,
-            name: relatedPart.name,
-            price: relatedPart.price,
-            image_url: relatedPart.image_url,
-            shop_rating: (relatedPart.shops as any)?.rating || 0,
-            part_type: relatedPart.part_type,
-          })) || []
-        }
-      } catch (err) {
-        console.log('Related parts not available:', err)
-        relatedParts = []
-      }
-
-      // Update views count (optional - don't fail if this doesn't work)
-      try {
-        await supabase
-          .from('parts')
-          .update({ views: partData.views + 1 })
-          .eq('id', partId)
-      } catch (err) {
-        console.log('Could not update view count:', err)
-      }
-
-      setPart({
-        ...transformedPart,
-        reviews,
-        related_parts: relatedParts,
-        views: partData.views + 1, // Update the view count locally
-      })
-
-    } catch (err: any) {
-      console.error('Error fetching part:', err)
-      setError(err.message || 'Failed to fetch part')
-    } finally {
-      setLoading(false)
-    }
-  }, [partId, supabase])
-
-  useEffect(() => {
-    fetchPart()
-  }, [fetchPart])
+  // Convert error to string
+  const error = queryError ? (queryError as Error).message : null
 
   return {
     part,
     loading,
     error,
-    refresh: fetchPart
+    refresh
   }
 }

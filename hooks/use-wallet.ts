@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/utils/supabase/client'
 
 interface Wallet {
@@ -38,6 +39,13 @@ interface Pagination {
   totalPages: number
 }
 
+interface WalletData {
+  wallet: Wallet | null
+  transactions: WalletTransaction[]
+  pagination: Pagination | null
+  settings: WalletSettings | null
+}
+
 interface UseWalletReturn {
   wallet: Wallet | null
   transactions: WalletTransaction[]
@@ -51,53 +59,64 @@ interface UseWalletReturn {
   initiateWithdrawal: (amount: number, bankDetails?: any) => Promise<{ success: boolean; message?: string; error?: string }>
 }
 
+// Query keys for cache management
+export const walletQueryKeys = {
+  all: ['wallet'] as const,
+  data: (page: number, type: string) => ['wallet', 'data', page, type] as const,
+}
+
+// Fetch function for wallet data
+async function fetchWalletData(page: number = 1, type: string = ''): Promise<WalletData> {
+  const params = new URLSearchParams()
+  params.set('page', page.toString())
+  if (type && type !== 'all') {
+    params.set('type', type)
+  }
+
+  const response = await fetch(`/api/wallet?${params.toString()}`)
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to fetch wallet')
+  }
+
+  return {
+    wallet: data.wallet,
+    transactions: data.transactions,
+    pagination: data.pagination,
+    settings: data.settings,
+  }
+}
+
 export function useWallet(): UseWalletReturn {
-  const [wallet, setWallet] = useState<Wallet | null>(null)
-  const [transactions, setTransactions] = useState<WalletTransaction[]>([])
-  const [pagination, setPagination] = useState<Pagination | null>(null)
-  const [settings, setSettings] = useState<WalletSettings | null>(null)
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const supabase = useMemo(() => createClient(), [])
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [currentType, setCurrentType] = useState('')
 
-  const supabase = createClient()
-
-  const fetchWallet = useCallback(async (page: number = 1, type: string = '') => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const params = new URLSearchParams()
-      params.set('page', page.toString())
-      if (type && type !== 'all') {
-        params.set('type', type)
-      }
-
-      const response = await fetch(`/api/wallet?${params.toString()}`)
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch wallet')
-      }
-
-      setWallet(data.wallet)
-      setTransactions(data.transactions)
-      setPagination(data.pagination)
-      setSettings(data.settings)
-    } catch (err: any) {
-      console.error('Error fetching wallet:', err)
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Query for wallet data with 30-second stale time
+  const {
+    data,
+    isLoading: loading,
+    refetch
+  } = useQuery({
+    queryKey: walletQueryKeys.data(currentPage, currentType),
+    queryFn: () => fetchWalletData(currentPage, currentType),
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes cache
+  })
 
   const refreshWallet = useCallback(async () => {
-    await fetchWallet()
-  }, [fetchWallet])
+    setError(null)
+    await refetch()
+  }, [refetch])
 
   const fetchTransactions = useCallback(async (page: number = 1, type: string = '') => {
-    await fetchWallet(page, type)
-  }, [fetchWallet])
+    setCurrentPage(page)
+    setCurrentType(type)
+    // The query will automatically refetch due to queryKey change
+  }, [])
 
   const initiateDeposit = useCallback(async (amount: number) => {
     try {
@@ -107,15 +126,15 @@ export function useWallet(): UseWalletReturn {
         body: JSON.stringify({ amount })
       })
 
-      const data = await response.json()
+      const responseData = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to initiate deposit')
+        throw new Error(responseData.error || 'Failed to initiate deposit')
       }
 
       return {
-        payfastUrl: data.payfastUrl,
-        payfastData: data.payfastData
+        payfastUrl: responseData.payfastUrl,
+        payfastData: responseData.payfastData
       }
     } catch (err: any) {
       console.error('Error initiating deposit:', err)
@@ -132,28 +151,23 @@ export function useWallet(): UseWalletReturn {
         body: JSON.stringify({ amount, bankDetails })
       })
 
-      const data = await response.json()
+      const responseData = await response.json()
 
       if (!response.ok) {
-        return { success: false, error: data.error || 'Failed to process withdrawal' }
+        return { success: false, error: responseData.error || 'Failed to process withdrawal' }
       }
 
-      // Refresh wallet data after withdrawal
-      await refreshWallet()
+      // Invalidate wallet cache after withdrawal
+      queryClient.invalidateQueries({ queryKey: walletQueryKeys.all })
 
-      return { success: true, message: data.message }
+      return { success: true, message: responseData.message }
     } catch (err: any) {
       console.error('Error initiating withdrawal:', err)
       return { success: false, error: err.message }
     }
-  }, [refreshWallet])
+  }, [queryClient])
 
-  // Initial fetch
-  useEffect(() => {
-    fetchWallet()
-  }, [fetchWallet])
-
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates and invalidate cache
   useEffect(() => {
     const setupSubscription = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -170,7 +184,8 @@ export function useWallet(): UseWalletReturn {
             filter: `user_id=eq.${user.id}`
           },
           () => {
-            refreshWallet()
+            // Invalidate cache on wallet updates
+            queryClient.invalidateQueries({ queryKey: walletQueryKeys.all })
           }
         )
         .on(
@@ -181,7 +196,8 @@ export function useWallet(): UseWalletReturn {
             table: 'wallet_transactions'
           },
           () => {
-            refreshWallet()
+            // Invalidate cache on new transactions
+            queryClient.invalidateQueries({ queryKey: walletQueryKeys.all })
           }
         )
         .subscribe()
@@ -192,13 +208,13 @@ export function useWallet(): UseWalletReturn {
     }
 
     setupSubscription()
-  }, [supabase, refreshWallet])
+  }, [supabase, queryClient])
 
   return {
-    wallet,
-    transactions,
-    pagination,
-    settings,
+    wallet: data?.wallet || null,
+    transactions: data?.transactions || [],
+    pagination: data?.pagination || null,
+    settings: data?.settings || null,
     loading,
     error,
     refreshWallet,
@@ -207,4 +223,3 @@ export function useWallet(): UseWalletReturn {
     initiateWithdrawal
   }
 }
-

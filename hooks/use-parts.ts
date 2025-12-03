@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/utils/supabase/client'
 
 export interface Part {
@@ -124,12 +125,194 @@ export interface AvailableQuantity {
   lead_time_days: number | null
 }
 
+// Query keys for cache management
+export const partsQueryKeys = {
+  all: ['parts'] as const,
+  list: (filters: PartsFilters) => ['parts', 'list', filters] as const,
+  categories: ['parts', 'categories'] as const,
+}
+
+// Fetch function for parts
+async function fetchParts(supabase: ReturnType<typeof createClient>, filters: PartsFilters) {
+  // Try the new search function first, fallback to traditional query if it fails
+  let data, error
+  
+  try {
+    const rpcParams = {
+      search_text: filters.search || '',
+      category_name: filters.categories.length > 0 ? filters.categories[0] : '',
+      min_price_val: filters.priceRange.min || 0,
+      max_price_val: filters.priceRange.max || 999999,
+      sort_order: filters.sortBy || 'relevance'
+    }
+    
+    const result = await supabase.rpc('search_parts', rpcParams)
+    data = result.data
+    error = result.error
+    
+    if (error) {
+      throw new Error(error.message)
+    }
+  } catch (rpcError) {
+    console.warn('RPC function failed, falling back to traditional query:', rpcError)
+    // Fallback to traditional query
+    let query = supabase
+      .from('parts')
+      .select(`
+        *,
+        shops!inner(
+          name,
+          rating,
+          review_count,
+          user_id
+        )
+      `)
+      .eq('status', 'active')
+
+    // Apply filters
+    if (filters.search) {
+      query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,brand.ilike.%${filters.search}%,model.ilike.%${filters.search}%`)
+    }
+    if (filters.categories.length > 0) {
+      query = query.in('category', filters.categories)
+    }
+    if (filters.subcategories.length > 0) {
+      query = query.in('subcategory', filters.subcategories)
+    }
+    if (filters.brands.length > 0) {
+      query = query.in('brand', filters.brands)
+    }
+    if (filters.conditions.length > 0) {
+      query = query.in('condition_status', filters.conditions)
+    }
+    if (filters.priceRange.min !== null) {
+      query = query.gte('price', filters.priceRange.min)
+    }
+    if (filters.priceRange.max !== null) {
+      query = query.lte('price', filters.priceRange.max)
+    }
+    if (filters.location) {
+      query = query.or(`location_city.ilike.%${filters.location}%,location_town.ilike.%${filters.location}%`)
+    }
+
+    // Apply sorting
+    switch (filters.sortBy) {
+      case 'price-low':
+        query = query.order('price', { ascending: true })
+        break
+      case 'price-high':
+        query = query.order('price', { ascending: false })
+        break
+      case 'newest':
+        query = query.order('created_at', { ascending: false })
+        break
+      case 'most-viewed':
+        query = query.order('views', { ascending: false })
+        break
+      default:
+        query = query.order('views', { ascending: false }).order('created_at', { ascending: false })
+        break
+    }
+
+    const result = await query.limit(50)
+    data = result.data
+    error = result.error
+  }
+
+  if (error) {
+    throw new Error(`Failed to fetch parts: ${error.message}`)
+  }
+
+  // Transform the data to match our Part interface
+  const transformedParts = data?.map((part: any) => {
+    // Handle both RPC function result and traditional query result
+    const isRpcResult = part.shop_name !== undefined
+    const shopData = isRpcResult ? part : (part.shops as any)
+    
+    return {
+      id: part.id,
+      name: part.name,
+      description: part.description,
+      category: part.category,
+      subcategory: part.subcategory || null,
+      brand: part.brand || null,
+      model: part.model || null,
+      location_city: part.location_city || null,
+      location_town: part.location_town || null,
+      condition_status: part.condition_status || null,
+      has_box: part.has_box || null,
+      has_charger: part.has_charger || null,
+      price: part.price,
+      cost: part.cost || null,
+      stock_quantity: part.stock_quantity,
+      status: part.status || 'active',
+      part_type: part.part_type,
+      original_condition: part.original_condition || null,
+      refurbished_condition: part.refurbished_condition || null,
+      time_spent_hours: part.time_spent_hours || null,
+      profit: part.profit || null,
+      image_url: part.image_url,
+      views: part.views || 0,
+      created_at: part.created_at,
+      updated_at: part.updated_at || part.created_at,
+      published_at: part.published_at || part.created_at,
+      shop_id: part.shop_id || '',
+      search_keywords: part.search_keywords || [],
+      storage_capacity: part.storage_capacity || null,
+      imei: part.imei || null,
+      network_status: part.network_status || null,
+      part_type_detail: part.part_type_detail || null,
+      model_compatibility: part.model_compatibility || null,
+      moq: part.moq || null,
+      moq_units: part.moq_units || null,
+      order_increment: part.order_increment || null,
+      pack_size_units: part.pack_size_units || null,
+      stock_on_hand_units: part.stock_on_hand_units || null,
+      backorder_allowed: part.backorder_allowed || null,
+      lead_time_days: part.lead_time_days || null,
+      accessory_type: part.accessory_type || null,
+      cpu: part.cpu || null,
+      ram: part.ram || null,
+      storage: part.storage || null,
+      screen_size: part.screen_size || null,
+      battery_health: part.battery_health || null,
+      kit_type: part.kit_type || null,
+      age_group: part.age_group || null,
+      electronics_subcategory: part.electronics_subcategory || null,
+      key_specs: part.key_specs || null,
+      shop_name: isRpcResult ? part.shop_name : shopData?.name,
+      shop_rating: isRpcResult ? part.shop_rating : shopData?.rating,
+      shop_review_count: isRpcResult ? 0 : shopData?.review_count || 0,
+      shop_user_id: isRpcResult ? part.shop_user_id : shopData?.user_id,
+    }
+  }) || []
+
+  return transformedParts
+}
+
+// Fetch function for category hierarchy
+async function fetchCategoryHierarchy(supabase: ReturnType<typeof createClient>) {
+  const { data, error } = await supabase.rpc('get_category_hierarchy')
+  
+  if (error) {
+    console.warn('Failed to fetch category hierarchy:', error)
+    // Fallback to hardcoded hierarchy
+    return [
+      { category: 'mobile_phones', subcategories: ['smartphones', 'feature_phones'] },
+      { category: 'phone_parts', subcategories: ['screen', 'battery', 'charging_port', 'camera', 'speaker', 'microphone', 'housing', 'other'] },
+      { category: 'phone_accessories', subcategories: ['charger', 'case', 'earphones', 'screen_protector', 'cable', 'other'] },
+      { category: 'laptops', subcategories: ['gaming', 'business', 'ultrabook', 'workstation', 'chromebook', 'other'] },
+      { category: 'steam_kits', subcategories: ['coding', 'robotics', 'ai', 'electronics', 'other'] },
+      { category: 'other_electronics', subcategories: ['tv', 'audio', 'gaming', 'networking', 'power', 'other'] }
+    ]
+  }
+  
+  return data || []
+}
+
 export function useParts(initialFilters?: Partial<PartsFilters>) {
-  const [parts, setParts] = useState<Part[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [totalCount, setTotalCount] = useState(0)
-  const [categoryHierarchy, setCategoryHierarchy] = useState<CategoryHierarchy[]>([])
+  const queryClient = useQueryClient()
+  const supabase = useMemo(() => createClient(), [])
   
   const [filters, setFilters] = useState<PartsFilters>({
     search: '',
@@ -146,211 +329,26 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
     ...initialFilters
   })
 
-  const supabase = useMemo(() => createClient(), [])
+  // Query for parts with 2-minute stale time
+  const {
+    data: parts = [],
+    isLoading: loading,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: partsQueryKeys.list(filters),
+    queryFn: () => fetchParts(supabase, filters),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes cache
+  })
 
-  // Fetch category hierarchy
-  const fetchCategoryHierarchy = useCallback(async () => {
-    try {
-      const { data, error } = await supabase.rpc('get_category_hierarchy')
-      if (error) {
-        console.warn('Failed to fetch category hierarchy:', error)
-        // Fallback to hardcoded hierarchy
-        setCategoryHierarchy([
-          { category: 'mobile_phones', subcategories: ['smartphones', 'feature_phones'] },
-          { category: 'phone_parts', subcategories: ['screen', 'battery', 'charging_port', 'camera', 'speaker', 'microphone', 'housing', 'other'] },
-          { category: 'phone_accessories', subcategories: ['charger', 'case', 'earphones', 'screen_protector', 'cable', 'other'] },
-          { category: 'laptops', subcategories: ['gaming', 'business', 'ultrabook', 'workstation', 'chromebook', 'other'] },
-          { category: 'steam_kits', subcategories: ['coding', 'robotics', 'ai', 'electronics', 'other'] },
-          { category: 'other_electronics', subcategories: ['tv', 'audio', 'gaming', 'networking', 'power', 'other'] }
-        ])
-      } else {
-        setCategoryHierarchy(data || [])
-      }
-    } catch (err) {
-      console.warn('Error fetching category hierarchy:', err)
-    }
-  }, [supabase])
-
-  const fetchParts = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      // Try the new search function first, fallback to traditional query if it fails
-      let data, error
-      
-      try {
-        const rpcParams = {
-          search_text: filters.search || '',
-          category_name: filters.categories.length > 0 ? filters.categories[0] : '',
-          min_price_val: filters.priceRange.min || 0,
-          max_price_val: filters.priceRange.max || 999999,
-          sort_order: filters.sortBy || 'relevance'
-        }
-        console.log('Calling search_parts with params:', rpcParams)
-        
-        const result = await supabase.rpc('search_parts', rpcParams)
-        data = result.data
-        error = result.error
-        
-        if (error) {
-          console.error('RPC function returned error:', error)
-          throw new Error(error.message)
-        }
-      } catch (rpcError) {
-        console.warn('RPC function failed, falling back to traditional query:', rpcError)
-        // Fallback to traditional query
-        let query = supabase
-          .from('parts')
-          .select(`
-            *,
-            shops!inner(
-              name,
-              rating,
-              review_count,
-              user_id
-            )
-          `)
-          .eq('status', 'active')
-
-        // Apply filters
-        if (filters.search) {
-          query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,brand.ilike.%${filters.search}%,model.ilike.%${filters.search}%`)
-        }
-        if (filters.categories.length > 0) {
-          query = query.in('category', filters.categories)
-        }
-        if (filters.subcategories.length > 0) {
-          query = query.in('subcategory', filters.subcategories)
-        }
-        if (filters.brands.length > 0) {
-          query = query.in('brand', filters.brands)
-        }
-        if (filters.conditions.length > 0) {
-          query = query.in('condition_status', filters.conditions)
-        }
-        if (filters.priceRange.min !== null) {
-          query = query.gte('price', filters.priceRange.min)
-        }
-        if (filters.priceRange.max !== null) {
-          query = query.lte('price', filters.priceRange.max)
-        }
-        if (filters.location) {
-          query = query.or(`location_city.ilike.%${filters.location}%,location_town.ilike.%${filters.location}%`)
-        }
-
-        // Apply sorting
-        switch (filters.sortBy) {
-          case 'price-low':
-            query = query.order('price', { ascending: true })
-            break
-          case 'price-high':
-            query = query.order('price', { ascending: false })
-            break
-          case 'newest':
-            query = query.order('created_at', { ascending: false })
-            break
-          case 'most-viewed':
-            query = query.order('views', { ascending: false })
-            break
-          default:
-            query = query.order('views', { ascending: false }).order('created_at', { ascending: false })
-            break
-        }
-
-        const result = await query.limit(50)
-        data = result.data
-        error = result.error
-      }
-
-      if (error) {
-        throw new Error(`Failed to fetch parts: ${error.message}`)
-      }
-
-      // Transform the data to match our Part interface
-      const transformedParts = data?.map((part: any) => {
-        // Handle both RPC function result and traditional query result
-        const isRpcResult = part.shop_name !== undefined
-        const shopData = isRpcResult ? part : (part.shops as any)
-        
-        return {
-          id: part.id,
-          name: part.name,
-          description: part.description,
-          category: part.category,
-          subcategory: part.subcategory || null,
-          brand: part.brand || null,
-          model: part.model || null,
-          location_city: part.location_city || null,
-          location_town: part.location_town || null,
-          condition_status: part.condition_status || null,
-          has_box: part.has_box || null,
-          has_charger: part.has_charger || null,
-          price: part.price,
-          cost: part.cost || null,
-          stock_quantity: part.stock_quantity,
-          status: part.status || 'active',
-          part_type: part.part_type,
-          original_condition: part.original_condition || null,
-          refurbished_condition: part.refurbished_condition || null,
-          time_spent_hours: part.time_spent_hours || null,
-          profit: part.profit || null,
-          image_url: part.image_url,
-          views: part.views || 0,
-          created_at: part.created_at,
-          updated_at: part.updated_at || part.created_at,
-          published_at: part.published_at || part.created_at,
-          shop_id: part.shop_id || '',
-          search_keywords: part.search_keywords || [],
-          storage_capacity: part.storage_capacity || null,
-          imei: part.imei || null,
-          network_status: part.network_status || null,
-          part_type_detail: part.part_type_detail || null,
-          model_compatibility: part.model_compatibility || null,
-          moq: part.moq || null,
-          moq_units: part.moq_units || null,
-          order_increment: part.order_increment || null,
-          pack_size_units: part.pack_size_units || null,
-          stock_on_hand_units: part.stock_on_hand_units || null,
-          backorder_allowed: part.backorder_allowed || null,
-          lead_time_days: part.lead_time_days || null,
-          accessory_type: part.accessory_type || null,
-          cpu: part.cpu || null,
-          ram: part.ram || null,
-          storage: part.storage || null,
-          screen_size: part.screen_size || null,
-          battery_health: part.battery_health || null,
-          kit_type: part.kit_type || null,
-          age_group: part.age_group || null,
-          electronics_subcategory: part.electronics_subcategory || null,
-          key_specs: part.key_specs || null,
-          shop_name: isRpcResult ? part.shop_name : shopData?.name,
-          shop_rating: isRpcResult ? part.shop_rating : shopData?.rating,
-          shop_review_count: isRpcResult ? 0 : shopData?.review_count || 0,
-          shop_user_id: isRpcResult ? part.shop_user_id : shopData?.user_id,
-        }
-      }) || []
-
-      setParts(transformedParts)
-      setTotalCount(transformedParts.length) // This is a simplified count
-
-    } catch (err: any) {
-      console.error('Error fetching parts:', err)
-      setError(err.message || 'Failed to fetch parts')
-    } finally {
-      setLoading(false)
-    }
-  }, [filters, supabase])
-
-  // Fetch parts when filters change
-  useEffect(() => {
-    fetchParts()
-  }, [fetchParts])
-
-  // Fetch category hierarchy on mount
-  useEffect(() => {
-    fetchCategoryHierarchy()
-  }, [fetchCategoryHierarchy])
+  // Query for category hierarchy with 5-minute stale time
+  const { data: categoryHierarchy = [] } = useQuery({
+    queryKey: partsQueryKeys.categories,
+    queryFn: () => fetchCategoryHierarchy(supabase),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
+  })
 
   // Update filters
   const updateFilters = useCallback((newFilters: Partial<PartsFilters>) => {
@@ -358,7 +356,7 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
   }, [])
 
   // Get unique values for filter dropdowns
-  const categories = useMemo(() => categoryHierarchy.map(h => h.category), [categoryHierarchy])
+  const categories = useMemo(() => categoryHierarchy.map((h: CategoryHierarchy) => h.category), [categoryHierarchy])
   
   const conditions = useMemo(() => {
     return ['new', 'refurbished', 'used']
@@ -366,14 +364,17 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
 
   // Refresh data
   const refresh = useCallback(() => {
-    fetchParts()
-  }, [fetchParts])
+    refetch()
+  }, [refetch])
+
+  // Convert error to string
+  const error = queryError ? (queryError as Error).message : null
 
   return {
     parts,
     loading,
     error,
-    totalCount,
+    totalCount: parts.length,
     filters,
     updateFilters,
     categories,

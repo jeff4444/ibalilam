@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/utils/supabase/client'
 
 export interface FicaDocument {
@@ -21,153 +22,152 @@ export interface FicaStatus {
   is_admin?: boolean
 }
 
-export function useFica() {
-  const [documents, setDocuments] = useState<FicaDocument[]>([])
-  const [ficaStatus, setFicaStatus] = useState<FicaStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState<Record<string, boolean>>({})
-  const supabase = createClient()
+interface FicaData {
+  documents: FicaDocument[]
+  ficaStatus: FicaStatus | null
+}
 
-  // Fetch FICA documents and status
-  const fetchFicaData = async () => {
-    try {
-      setLoading(true)
-      
-      // Get current user first
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      
-      if (!currentUser) {
-        setFicaStatus({
-          fica_status: undefined,
-          fica_rejection_reason: '',
-          fica_verified_at: undefined,
-          fica_reviewed_at: undefined,
-          user_role: 'visitor',
-          is_admin: false
-        })
-        setDocuments([])
-        return
-      }
+// Query keys for cache management
+export const ficaQueryKeys = {
+  all: ['fica'] as const,
+  data: ['fica', 'data'] as const,
+}
 
-      // Fetch user profile with FICA status - be more specific with the query
-      const { data: profile, error: profileError } = await supabase
+// Default FICA status for unauthenticated users
+const defaultFicaStatus: FicaStatus = {
+  fica_status: undefined,
+  fica_rejection_reason: '',
+  fica_verified_at: undefined,
+  fica_reviewed_at: undefined,
+  user_role: 'visitor',
+  is_admin: false
+}
+
+// Fetch function for FICA data
+async function fetchFicaData(supabase: ReturnType<typeof createClient>): Promise<FicaData> {
+  // Get current user first
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  
+  if (!currentUser) {
+    return {
+      documents: [],
+      ficaStatus: defaultFicaStatus
+    }
+  }
+
+  // Fetch user profile with FICA status
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role, is_admin')
+    .eq('user_id', currentUser.id)
+    .maybeSingle()
+
+  let ficaStatus: FicaStatus | null = null
+  let documents: FicaDocument[] = []
+
+  if (profileError) {
+    console.error('Profile error:', profileError)
+    
+    // If profile doesn't exist, create it
+    if (profileError.code === 'PGRST116') {
+      const { error: createError } = await supabase
         .from('user_profiles')
-        .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role, is_admin')
-        .eq('user_id', currentUser.id)
-        .maybeSingle()
-
-      if (profileError) {
-        console.error('Profile error:', {
-          code: profileError.code,
-          message: profileError.message,
-          details: profileError.details,
-          hint: profileError.hint
+        .insert({
+          user_id: currentUser.id,
+          user_role: 'visitor',
+          fica_status: null
         })
-        // If profile doesn't exist, create a default one
-        if (profileError.code === 'PGRST116') {
-          // Profile doesn't exist, create it
-          const { error: createError } = await supabase
-            .from('user_profiles')
-            .insert({
-              user_id: currentUser.id,
-              user_role: 'visitor',
-              fica_status: null
-            })
-          
-          if (createError) {
-            console.error('Error creating profile:', createError)
-          } else {
-            // Retry fetching the profile after creation
-            const { data: newProfile, error: retryError } = await supabase
-              .from('user_profiles')
-              .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role, is_admin')
-              .eq('user_id', currentUser.id)
-              .single()
-            
-            if (!retryError && newProfile) {
-              const allowedRoles: FicaStatus['user_role'][] = ['visitor', 'buyer', 'seller']
-              const normalizedProfile: FicaStatus = {
-                ...newProfile,
-                user_role: allowedRoles.includes(newProfile.user_role as FicaStatus['user_role'])
-                  ? (newProfile.user_role as FicaStatus['user_role'])
-                  : 'visitor',
-                is_admin: Boolean(newProfile.is_admin)
-              }
-
-              setFicaStatus(normalizedProfile)
-              // Continue with document fetching
-              const { data: docs, error: docsError } = await supabase
-                .from('fica_documents')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .order('uploaded_at', { ascending: false })
-              
-              if (!docsError) {
-                setDocuments(docs || [])
-              }
-              return
-            }
+      
+      if (!createError) {
+        // Retry fetching the profile after creation
+        const { data: newProfile } = await supabase
+          .from('user_profiles')
+          .select('fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, user_role, is_admin')
+          .eq('user_id', currentUser.id)
+          .single()
+        
+        if (newProfile) {
+          const allowedRoles: FicaStatus['user_role'][] = ['visitor', 'buyer', 'seller']
+          ficaStatus = {
+            ...newProfile,
+            user_role: allowedRoles.includes(newProfile.user_role as FicaStatus['user_role'])
+              ? (newProfile.user_role as FicaStatus['user_role'])
+              : 'visitor',
+            is_admin: Boolean(newProfile.is_admin)
           }
         }
-        
-        // Use defaults
-        setFicaStatus({
-          fica_status: null,
-          fica_rejection_reason: '',
-          fica_verified_at: undefined,
-          fica_reviewed_at: undefined,
-          user_role: 'visitor',
-          is_admin: false
-        })
-        setDocuments([])
-        return
       }
-
-      // Fetch FICA documents for this specific user
-      const { data: docs, error: docsError } = await supabase
-        .from('fica_documents')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('uploaded_at', { ascending: false })
-
-      if (docsError) {
-        console.error('Documents error:', docsError)
-        // Don't throw, just use empty array
-        setDocuments([])
-      } else {
-        setDocuments(docs || [])
-      }
-
-      const allowedRoles: FicaStatus['user_role'][] = ['visitor', 'buyer', 'seller']
-      const sanitizedProfile = profile
-        ? {
-            ...profile,
-            user_role: allowedRoles.includes(profile.user_role as FicaStatus['user_role'])
-              ? (profile.user_role as FicaStatus['user_role'])
-              : 'visitor',
-            is_admin: Boolean(profile.is_admin)
-          }
-        : null
-
-      // Handle case when profile doesn't exist yet
-      setFicaStatus(sanitizedProfile || {
+    }
+    
+    if (!ficaStatus) {
+      ficaStatus = {
         fica_status: null,
         fica_rejection_reason: '',
         fica_verified_at: undefined,
         fica_reviewed_at: undefined,
         user_role: 'visitor',
         is_admin: false
-      })
-      setDocuments(docs || [])
-    } catch (error) {
-      console.error('Error fetching FICA data:', error)
-    } finally {
-      setLoading(false)
+      }
+    }
+  } else if (profile) {
+    const allowedRoles: FicaStatus['user_role'][] = ['visitor', 'buyer', 'seller']
+    ficaStatus = {
+      ...profile,
+      user_role: allowedRoles.includes(profile.user_role as FicaStatus['user_role'])
+        ? (profile.user_role as FicaStatus['user_role'])
+        : 'visitor',
+      is_admin: Boolean(profile.is_admin)
+    }
+  } else {
+    ficaStatus = {
+      fica_status: null,
+      fica_rejection_reason: '',
+      fica_verified_at: undefined,
+      fica_reviewed_at: undefined,
+      user_role: 'visitor',
+      is_admin: false
     }
   }
 
+  // Fetch FICA documents for this specific user
+  const { data: docs, error: docsError } = await supabase
+    .from('fica_documents')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('uploaded_at', { ascending: false })
+
+  if (!docsError) {
+    documents = docs || []
+  }
+
+  return {
+    documents,
+    ficaStatus
+  }
+}
+
+export function useFica() {
+  const queryClient = useQueryClient()
+  const supabase = useMemo(() => createClient(), [])
+  const [uploading, setUploading] = useState<Record<string, boolean>>({})
+
+  // Query for FICA data with 5-minute stale time
+  const {
+    data,
+    isLoading: loading,
+    refetch
+  } = useQuery({
+    queryKey: ficaQueryKeys.data,
+    queryFn: () => fetchFicaData(supabase),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes cache
+  })
+
+  const documents = data?.documents || []
+  const ficaStatus = data?.ficaStatus || null
+
   // Upload FICA document
-  const uploadDocument = async (
+  const uploadDocument = useCallback(async (
     file: File,
     documentType: 'id_document' | 'proof_of_address' | 'id_selfie'
   ) => {
@@ -198,7 +198,7 @@ export function useFica() {
         .getPublicUrl(filePath)
 
       // Save document record to database
-      const { data, error: dbError } = await supabase
+      const { data: docData, error: dbError } = await supabase
         .from('fica_documents')
         .upsert({
           user_id: currentUser.id,
@@ -223,20 +223,20 @@ export function useFica() {
         if (statusError) throw statusError
       }
 
-      // Refresh data
-      await fetchFicaData()
+      // Invalidate cache to refresh data
+      queryClient.invalidateQueries({ queryKey: ficaQueryKeys.all })
       
-      return { success: true, data }
+      return { success: true, data: docData }
     } catch (error) {
       console.error('Error uploading document:', error)
       return { success: false, error }
     } finally {
       setUploading(prev => ({ ...prev, [documentType]: false }))
     }
-  }
+  }, [supabase, ficaStatus, queryClient])
 
   // Delete FICA document
-  const deleteDocument = async (documentId: string) => {
+  const deleteDocument = useCallback(async (documentId: string) => {
     try {
       // Prevent deletion if user is FICA verified
       if (ficaStatus?.fica_status === 'verified') {
@@ -262,18 +262,18 @@ export function useFica() {
 
       if (error) throw error
 
-      // Refresh data
-      await fetchFicaData()
+      // Invalidate cache to refresh data
+      queryClient.invalidateQueries({ queryKey: ficaQueryKeys.all })
       
       return { success: true }
     } catch (error) {
       console.error('Error deleting document:', error)
       return { success: false, error }
     }
-  }
+  }, [supabase, ficaStatus, documents, queryClient])
 
   // Submit FICA for review
-  const submitForReview = async () => {
+  const submitForReview = useCallback(async () => {
     try {
       // Get current user
       const { data: { user: currentUser } } = await supabase.auth.getUser()
@@ -306,34 +306,30 @@ export function useFica() {
 
       if (logError) throw logError
 
-      // Refresh data
-      await fetchFicaData()
+      // Invalidate cache to refresh data
+      queryClient.invalidateQueries({ queryKey: ficaQueryKeys.all })
       
       return { success: true }
     } catch (error) {
       console.error('Error submitting for review:', error)
       return { success: false, error }
     }
-  }
+  }, [supabase, documents, queryClient])
 
   // Check if user can publish listings
-  const canPublishListings = () => {
+  const canPublishListings = useCallback(() => {
     return ficaStatus?.user_role === 'seller' && ficaStatus?.fica_status === 'verified'
-  }
+  }, [ficaStatus])
 
   // Check if a specific document type is uploading
-  const isUploading = (documentType: string) => {
+  const isUploading = useCallback((documentType: string) => {
     return uploading[documentType] || false
-  }
+  }, [uploading])
 
   // Check if user is loan eligible
-  const isLoanEligible = () => {
+  const isLoanEligible = useCallback(() => {
     return ficaStatus?.fica_status === 'verified'
-  }
-
-  useEffect(() => {
-    fetchFicaData()
-  }, [])
+  }, [ficaStatus])
 
   return {
     documents,
@@ -346,6 +342,6 @@ export function useFica() {
     submitForReview,
     canPublishListings,
     isLoanEligible,
-    refetch: fetchFicaData,
+    refetch,
   }
 }
