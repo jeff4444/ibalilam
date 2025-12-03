@@ -139,24 +139,70 @@ export async function POST(req: NextRequest) {
         // Default commission if category not found
         const defaultCommission = 5.0
 
+        // Fetch VAT and Payfast fee settings from global_settings
+        const { data: feeSettings, error: feeSettingsError } = await supabase
+          .from("global_settings")
+          .select("setting_key, setting_value")
+          .in("setting_key", ["vat_percentage", "payfast_fee_percentage"])
+
+        if (feeSettingsError) {
+          console.error("Error fetching fee settings:", feeSettingsError)
+        }
+
+        // Fetch feature flags for enabling/disabling fees
+        const { data: feeFlags, error: feeFlagsError } = await supabase
+          .from("feature_flags")
+          .select("flag_name, flag_value")
+          .in("flag_name", ["enable_vat_fees", "enable_payfast_fees"])
+
+        if (feeFlagsError) {
+          console.error("Error fetching fee flags:", feeFlagsError)
+        }
+
+        // Parse fee settings with defaults
+        const vatPercentage = parseFloat(
+          feeSettings?.find(s => s.setting_key === "vat_percentage")?.setting_value || "15"
+        )
+        const payfastFeePercentage = parseFloat(
+          feeSettings?.find(s => s.setting_key === "payfast_fee_percentage")?.setting_value || "3.4"
+        )
+        const enableVatFees = feeFlags?.find(f => f.flag_name === "enable_vat_fees")?.flag_value ?? true
+        const enablePayfastFees = feeFlags?.find(f => f.flag_name === "enable_payfast_fees")?.flag_value ?? true
+
         // Create transaction records for each shop
         const transactions = []
         const shopTransactionMap = new Map<string, { sellerAmount: number; itemCount: number }>()
         
         for (const [shopId, shopItems] of shopItemsMap.entries()) {
-          // Calculate total amount for this shop
+          // Calculate total amount for this shop (listing price paid by buyer)
           const shopTotal = shopItems.reduce((sum, item: any) => sum + parseFloat(item.total_price.toString()), 0)
 
           // Calculate commission (use first item's category for commission calculation)
           const firstItemCategory = (shopItems[0] as any)?.parts?.category
           const commissionPercentage = commissionsMap.get(firstItemCategory) || defaultCommission
+          
+          // Calculate all fees from the listing price
+          const vatAmount = enableVatFees ? (shopTotal * vatPercentage) / 100 : 0
+          const payfastAmount = enablePayfastFees ? (shopTotal * payfastFeePercentage) / 100 : 0
           const commissionAmount = (shopTotal * commissionPercentage) / 100
-          const sellerAmount = shopTotal - commissionAmount
+          
+          // Total fees and seller amount
+          const totalFees = vatAmount + payfastAmount + commissionAmount
+          const sellerAmount = shopTotal - totalFees
+
+          console.log(`Order ${orderId} - Shop ${shopId} fee breakdown:`, {
+            shopTotal,
+            vatAmount: enableVatFees ? vatAmount : 'disabled',
+            payfastAmount: enablePayfastFees ? payfastAmount : 'disabled',
+            commissionAmount,
+            totalFees,
+            sellerAmount
+          })
 
           transactions.push({
             order_id: orderId,
             amount: shopTotal,
-            commission_amount: commissionAmount,
+            commission_amount: totalFees, // Store total fees (VAT + Payfast + Commission) in commission_amount for now
             seller_amount: sellerAmount,
             status: "completed",
             payment_method: "payfast",

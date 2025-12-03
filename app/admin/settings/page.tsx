@@ -23,7 +23,9 @@ import {
   Trash2,
   CheckCircle,
   AlertTriangle,
-  Search
+  Search,
+  Percent,
+  Save
 } from 'lucide-react'
 
 interface CategoryCommission {
@@ -86,6 +88,15 @@ export default function AdminSettingsPage() {
   const [showSettingModal, setShowSettingModal] = useState(false)
   const [showFlagModal, setShowFlagModal] = useState(false)
   
+  // Fee settings state
+  const [feeSettings, setFeeSettings] = useState({
+    vatPercentage: '15',
+    payfastFeePercentage: '3.4',
+    enableVatFees: true,
+    enablePayfastFees: true
+  })
+  const [savingFees, setSavingFees] = useState(false)
+  
   const supabase = createClient()
 
   useEffect(() => {
@@ -122,6 +133,19 @@ export default function AdminSettingsPage() {
       setEscrowSettings(escrowResult.data || [])
       setGlobalSettings(settingsResult.data || [])
       setFeatureFlags(flagsResult.data || [])
+      
+      // Populate fee settings from fetched data
+      const vatSetting = settingsResult.data?.find(s => s.setting_key === 'vat_percentage')
+      const payfastSetting = settingsResult.data?.find(s => s.setting_key === 'payfast_fee_percentage')
+      const vatFlag = flagsResult.data?.find(f => f.flag_name === 'enable_vat_fees')
+      const payfastFlag = flagsResult.data?.find(f => f.flag_name === 'enable_payfast_fees')
+      
+      setFeeSettings({
+        vatPercentage: vatSetting?.setting_value || '15',
+        payfastFeePercentage: payfastSetting?.setting_value || '3.4',
+        enableVatFees: vatFlag?.flag_value ?? true,
+        enablePayfastFees: payfastFlag?.flag_value ?? true
+      })
     } catch (err: any) {
       console.error('Error fetching settings:', err)
       setError(err.message)
@@ -300,6 +324,67 @@ export default function AdminSettingsPage() {
     }
   }
 
+  const handleSaveFeeSettings = async () => {
+    try {
+      setSavingFees(true)
+      setError(null)
+
+      // Update VAT percentage in global_settings
+      const { error: vatError } = await supabase
+        .from('global_settings')
+        .upsert({
+          setting_key: 'vat_percentage',
+          setting_value: feeSettings.vatPercentage,
+          setting_type: 'number',
+          description: 'VAT percentage applied to listings'
+        }, { onConflict: 'setting_key' })
+
+      if (vatError) throw vatError
+
+      // Update Payfast fee percentage in global_settings
+      const { error: payfastError } = await supabase
+        .from('global_settings')
+        .upsert({
+          setting_key: 'payfast_fee_percentage',
+          setting_value: feeSettings.payfastFeePercentage,
+          setting_type: 'number',
+          description: 'Payfast transaction fee percentage'
+        }, { onConflict: 'setting_key' })
+
+      if (payfastError) throw payfastError
+
+      // Update VAT feature flag
+      const { error: vatFlagError } = await supabase
+        .from('feature_flags')
+        .upsert({
+          flag_name: 'enable_vat_fees',
+          flag_value: feeSettings.enableVatFees,
+          description: 'Enable VAT fee calculation on listings'
+        }, { onConflict: 'flag_name' })
+
+      if (vatFlagError) throw vatFlagError
+
+      // Update Payfast feature flag
+      const { error: payfastFlagError } = await supabase
+        .from('feature_flags')
+        .upsert({
+          flag_name: 'enable_payfast_fees',
+          flag_value: feeSettings.enablePayfastFees,
+          description: 'Enable Payfast fee calculation on listings'
+        }, { onConflict: 'flag_name' })
+
+      if (payfastFlagError) throw payfastFlagError
+
+      setSuccess('Fee settings saved successfully')
+      fetchAllSettings()
+    } catch (err: any) {
+      console.error('Error saving fee settings:', err)
+      setError(err.message)
+    } finally {
+      setSavingFees(false)
+    }
+  }
+
   const categories = [
     'mobile_phones',
     'phone_parts', 
@@ -430,6 +515,124 @@ export default function AdminSettingsPage() {
               ))}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* Fee Settings */}
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Percent className="h-5 w-5 text-orange-500" />
+                Fee Settings
+              </CardTitle>
+              <CardDescription className="text-slate-400">Configure VAT and Payfast transaction fees</CardDescription>
+            </div>
+            <Button 
+              onClick={handleSaveFeeSettings} 
+              disabled={savingFees}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {savingFees ? 'Saving...' : 'Save Fees'}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* VAT Settings */}
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-white font-medium">VAT Fee</h3>
+                  <p className="text-sm text-slate-400">Value Added Tax percentage</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={feeSettings.enableVatFees}
+                    onCheckedChange={(checked) => setFeeSettings(prev => ({ ...prev, enableVatFees: checked }))}
+                  />
+                  <Badge className={feeSettings.enableVatFees ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-500/20 text-slate-400 border-slate-500/30'}>
+                    {feeSettings.enableVatFees ? 'Enabled' : 'Disabled'}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={feeSettings.vatPercentage}
+                  onChange={(e) => setFeeSettings(prev => ({ ...prev, vatPercentage: e.target.value }))}
+                  disabled={!feeSettings.enableVatFees}
+                  className="bg-slate-800 border-slate-700 text-white disabled:opacity-50"
+                />
+                <span className="text-slate-400">%</span>
+              </div>
+            </div>
+
+            {/* Payfast Settings */}
+            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-white font-medium">Payfast Fee</h3>
+                  <p className="text-sm text-slate-400">Payment gateway transaction fee</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={feeSettings.enablePayfastFees}
+                    onCheckedChange={(checked) => setFeeSettings(prev => ({ ...prev, enablePayfastFees: checked }))}
+                  />
+                  <Badge className={feeSettings.enablePayfastFees ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-500/20 text-slate-400 border-slate-500/30'}>
+                    {feeSettings.enablePayfastFees ? 'Enabled' : 'Disabled'}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={feeSettings.payfastFeePercentage}
+                  onChange={(e) => setFeeSettings(prev => ({ ...prev, payfastFeePercentage: e.target.value }))}
+                  disabled={!feeSettings.enablePayfastFees}
+                  className="bg-slate-800 border-slate-700 text-white disabled:opacity-50"
+                />
+                <span className="text-slate-400">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Fee Calculation Preview */}
+          <div className="mt-6 p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
+            <h4 className="text-slate-300 font-medium mb-2">Fee Calculation Preview</h4>
+            <p className="text-sm text-slate-400">
+              For a listing price of <span className="text-emerald-400 font-semibold">R2,000</span>, 
+              with total fees of{' '}
+              <span className="text-orange-400 font-semibold">
+                {(
+                  (feeSettings.enableVatFees ? parseFloat(feeSettings.vatPercentage) || 0 : 0) +
+                  (feeSettings.enablePayfastFees ? parseFloat(feeSettings.payfastFeePercentage) || 0 : 0)
+                ).toFixed(1)}%
+              </span>
+              {' '}(VAT + Payfast, excluding category commission):
+            </p>
+            <p className="text-white mt-2">
+              Seller Receives = R2,000 - ({(
+                (feeSettings.enableVatFees ? parseFloat(feeSettings.vatPercentage) || 0 : 0) +
+                (feeSettings.enablePayfastFees ? parseFloat(feeSettings.payfastFeePercentage) || 0 : 0)
+              ).toFixed(1)}% fees) ={' '}
+              <span className="text-emerald-400 font-bold">
+                R{(2000 * (1 - (
+                  (feeSettings.enableVatFees ? parseFloat(feeSettings.vatPercentage) || 0 : 0) +
+                  (feeSettings.enablePayfastFees ? parseFloat(feeSettings.payfastFeePercentage) || 0 : 0)
+                ) / 100)).toFixed(2)}
+              </span>
+            </p>
+          </div>
         </CardContent>
       </Card>
 

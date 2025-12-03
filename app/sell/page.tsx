@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Package, DollarSign, Cpu } from "lucide-react"
+import { Package, DollarSign, Cpu, Info } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { CartButton } from "@/components/cart-button"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
@@ -85,6 +86,15 @@ export default function SellPage() {
   const [error, setError] = useState("")
   const [priceTiers, setPriceTiers] = useState<Array<{ min_qty: number; unit_price: number }>>([])
   const [success, setSuccess] = useState("")
+  
+  // Fee settings state
+  const [feeSettings, setFeeSettings] = useState({
+    vatPercentage: 15,
+    payfastFeePercentage: 3.4,
+    enableVatFees: true,
+    enablePayfastFees: true
+  })
+  const [feeSettingsLoading, setFeeSettingsLoading] = useState(true)
 
   // Fetch available categories from database
   useEffect(() => {
@@ -116,6 +126,57 @@ export default function SellPage() {
     fetchCategories()
   }, [supabase])
 
+  // Fetch fee settings from database
+  useEffect(() => {
+    const fetchFeeSettings = async () => {
+      try {
+        setFeeSettingsLoading(true)
+        
+        // Fetch global settings for VAT and Payfast percentages
+        const { data: globalSettings, error: settingsError } = await supabase
+          .from('global_settings')
+          .select('*')
+          .in('setting_key', ['vat_percentage', 'payfast_fee_percentage'])
+        
+        if (settingsError) {
+          console.error('Error fetching global settings:', settingsError)
+          // Continue with defaults
+        }
+        
+        // Fetch feature flags for enabling/disabling fees
+        const { data: featureFlags, error: flagsError } = await supabase
+          .from('feature_flags')
+          .select('*')
+          .in('flag_name', ['enable_vat_fees', 'enable_payfast_fees'])
+        
+        if (flagsError) {
+          console.error('Error fetching feature flags:', flagsError)
+          // Continue with defaults
+        }
+        
+        // Parse settings
+        const vatSetting = globalSettings?.find(s => s.setting_key === 'vat_percentage')
+        const payfastSetting = globalSettings?.find(s => s.setting_key === 'payfast_fee_percentage')
+        const vatFlag = featureFlags?.find(f => f.flag_name === 'enable_vat_fees')
+        const payfastFlag = featureFlags?.find(f => f.flag_name === 'enable_payfast_fees')
+        
+        setFeeSettings({
+          vatPercentage: vatSetting ? parseFloat(vatSetting.setting_value) : 15,
+          payfastFeePercentage: payfastSetting ? parseFloat(payfastSetting.setting_value) : 3.4,
+          enableVatFees: vatFlag?.flag_value ?? true,
+          enablePayfastFees: payfastFlag?.flag_value ?? true
+        })
+      } catch (err) {
+        console.error('Error fetching fee settings:', err)
+        // Keep defaults
+      } finally {
+        setFeeSettingsLoading(false)
+      }
+    }
+    
+    fetchFeeSettings()
+  }, [supabase])
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
@@ -137,6 +198,51 @@ export default function SellPage() {
 
   // Get current category configuration from constants
   const currentCategory: CategoryConfig | null = formData.category ? CATEGORY_HIERARCHY[formData.category] || null : null
+  
+  // Get commission percentage for selected category
+  const categoryCommissionPercentage = formData.category 
+    ? availableCategories.find(c => c.category === formData.category)?.commission_percentage || 0 
+    : 0
+  
+  // Calculate fees and what seller receives from listing price
+  const calculateFeeBreakdown = () => {
+    const listingPrice = parseFloat(formData.price) || 0
+    if (listingPrice <= 0) return null
+    
+    // Calculate total fee percentage (only include enabled fees)
+    let totalFeePercentage = categoryCommissionPercentage // Commission is always included
+    if (feeSettings.enableVatFees) {
+      totalFeePercentage += feeSettings.vatPercentage
+    }
+    if (feeSettings.enablePayfastFees) {
+      totalFeePercentage += feeSettings.payfastFeePercentage
+    }
+    
+    // Calculate individual fee amounts from the listing price
+    const vatAmount = feeSettings.enableVatFees 
+      ? listingPrice * (feeSettings.vatPercentage / 100) 
+      : 0
+    const payfastAmount = feeSettings.enablePayfastFees 
+      ? listingPrice * (feeSettings.payfastFeePercentage / 100) 
+      : 0
+    const commissionAmount = listingPrice * (categoryCommissionPercentage / 100)
+    const totalFees = vatAmount + payfastAmount + commissionAmount
+    
+    // What seller receives = listing price - all fees
+    const sellerReceives = listingPrice - totalFees
+    
+    return {
+      listingPrice,
+      sellerReceives,
+      vatAmount,
+      payfastAmount,
+      commissionAmount,
+      totalFees,
+      totalFeePercentage
+    }
+  }
+  
+  const feeBreakdown = calculateFeeBreakdown()
 
   // Validate form based on category requirements
   const validateForm = () => {
@@ -196,7 +302,7 @@ export default function SellPage() {
         throw new Error('No shop found. Please complete your profile first.')
       }
 
-      // Prepare part data
+      // Prepare part data - price is now the listing price (what buyers see)
       const partData = {
         shop_id: shop.id,
         name: formData.name,
@@ -209,7 +315,7 @@ export default function SellPage() {
         part_type: formData.condition_status === 'refurbished' ? 'refurbished' : 'original',
         location_city: formData.location_city,
         location_town: formData.location_town,
-        price: parseFloat(formData.price),
+        price: parseFloat(formData.price), // Listing price (what buyers see)
         stock_quantity: parseInt(formData.quantity),
         status: 'active',
         image_url: images[0] || null,
@@ -738,12 +844,24 @@ export default function SellPage() {
                 <DollarSign className="h-5 w-5" />
                 Pricing & Quantity
               </CardTitle>
-              <CardDescription>Set your price and available quantity</CardDescription>
+              <CardDescription>Set your listing price and available quantity. We'll show you what you'll receive after fees.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Price (ZAR) *</Label>
+                  <Label htmlFor="price" className="flex items-center gap-2">
+                    Listing Price (ZAR) *
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>Enter the price customers will see. We'll calculate what you receive after fees are deducted.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </Label>
                   <Input 
                     id="price" 
                     type="number" 
@@ -753,6 +871,7 @@ export default function SellPage() {
                     onChange={(e) => handleInputChange('price', e.target.value)}
                     required 
                   />
+                  <p className="text-sm text-muted-foreground">The price buyers will see</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="quantity">Quantity Available *</Label>
@@ -767,6 +886,74 @@ export default function SellPage() {
                   />
                 </div>
               </div>
+
+              {/* Fee Breakdown */}
+              {feeBreakdown && formData.category && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-3 flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Fee Breakdown
+                  </h4>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between text-gray-700">
+                      <span>Listing Price (What buyers pay)</span>
+                      <span className="font-medium">R{feeBreakdown.listingPrice.toFixed(2)}</span>
+                    </div>
+                    
+                    <div className="border-t border-blue-200 pt-2 mt-2 space-y-1">
+                      {feeSettings.enableVatFees && (
+                        <div className="flex justify-between text-red-600">
+                          <span>- VAT ({feeSettings.vatPercentage}%)</span>
+                          <span>-R{feeBreakdown.vatAmount.toFixed(2)}</span>
+                        </div>
+                      )}
+                      
+                      {feeSettings.enablePayfastFees && (
+                        <div className="flex justify-between text-red-600">
+                          <span>- Payfast Fee ({feeSettings.payfastFeePercentage}%)</span>
+                          <span>-R{feeBreakdown.payfastAmount.toFixed(2)}</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between text-red-600">
+                        <span>- Platform Commission ({categoryCommissionPercentage}%)</span>
+                        <span>-R{feeBreakdown.commissionAmount.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="border-t border-blue-300 pt-2 mt-2">
+                      <div className="flex justify-between text-gray-600 text-xs mb-1">
+                        <span>Total Fees ({feeBreakdown.totalFeePercentage.toFixed(1)}%)</span>
+                        <span className="text-red-600">-R{feeBreakdown.totalFees.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-700 font-bold text-base">
+                        <span>You Receive</span>
+                        <span>R{feeBreakdown.sellerReceives.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Loading state for fee settings */}
+              {feeSettingsLoading && formData.price && (
+                <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-sm">Loading fee breakdown...</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Prompt to select category */}
+              {!formData.category && formData.price && (
+                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800">
+                    Please select a category above to see the complete fee breakdown.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
