@@ -78,6 +78,9 @@ export function MainNavbar() {
                 <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
                   Dashboard
                 </Link>
+                <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/inventory">
+                  Inventory
+                </Link>
                 <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard/transactions">
                   Transactions
                 </Link>

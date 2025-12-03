@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Package, DollarSign, Cpu, Info } from "lucide-react"
+import { Package, DollarSign, Cpu, Info, MapPin } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { CartButton } from "@/components/cart-button"
 import Link from "next/link"
@@ -95,6 +95,10 @@ export default function SellPage() {
     enablePayfastFees: true
   })
   const [feeSettingsLoading, setFeeSettingsLoading] = useState(true)
+  
+  // Distribution locations state
+  const [distributionLocations, setDistributionLocations] = useState<string[]>([])
+  const [distributionLocationsLoading, setDistributionLocationsLoading] = useState(true)
 
   // Fetch available categories from database
   useEffect(() => {
@@ -183,6 +187,38 @@ export default function SellPage() {
       router.push("/login")
     }
   }, [user, authLoading, router])
+
+  // Fetch distribution locations from user's shop
+  useEffect(() => {
+    const fetchDistributionLocations = async () => {
+      if (!user?.id) {
+        setDistributionLocationsLoading(false)
+        return
+      }
+      
+      try {
+        setDistributionLocationsLoading(true)
+        const { data, error } = await supabase
+          .from('shops')
+          .select('distribution_locations')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        
+        if (error) {
+          console.error('Error fetching distribution locations:', error)
+          return
+        }
+        
+        setDistributionLocations(data?.distribution_locations || [])
+      } catch (err) {
+        console.error('Error fetching distribution locations:', err)
+      } finally {
+        setDistributionLocationsLoading(false)
+      }
+    }
+    
+    fetchDistributionLocations()
+  }, [user?.id, supabase])
 
   // Handle input changes
   const handleInputChange = (field: string, value: string | boolean) => {
@@ -682,7 +718,7 @@ export default function SellPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="brand">Brand</Label>
                   <Input 
@@ -701,15 +737,50 @@ export default function SellPage() {
                     onChange={(e) => handleInputChange('model', e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location_city">City/Town</Label>
-                  <Input 
-                    id="location_city" 
-                    placeholder="e.g., Cape Town"
+              </div>
+
+              {/* Distribution Location Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="location_city" className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  Distribution Location
+                </Label>
+                {distributionLocationsLoading ? (
+                  <div className="flex items-center gap-2 py-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-sm text-muted-foreground">Loading locations...</span>
+                  </div>
+                ) : distributionLocations.length === 0 ? (
+                  <Alert className="border-amber-200 bg-amber-50">
+                    <MapPin className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800">
+                      No distribution locations set up. Please{" "}
+                      <Link href="/profile" className="font-medium underline hover:text-amber-900">
+                        add locations in your profile
+                      </Link>{" "}
+                      under the Shop Info tab before listing items.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Select 
                     value={formData.location_city}
-                    onChange={(e) => handleInputChange('location_city', e.target.value)}
-                  />
-                </div>
+                    onValueChange={(value) => handleInputChange('location_city', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select distribution location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {distributionLocations.map((location, index) => (
+                        <SelectItem key={index} value={location}>
+                          {location}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  Where this item will ship from
+                </p>
               </div>
             </CardContent>
           </Card>

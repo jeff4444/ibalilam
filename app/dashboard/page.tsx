@@ -356,6 +356,12 @@ export default function DashboardPage() {
               </Button>
             )}
             <Button asChild variant="outline">
+              <Link href="/inventory">
+                <Package className="mr-2 h-4 w-4" />
+                Inventory
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
               <Link href="/dashboard/transactions">
                 <Package className="mr-2 h-4 w-4" />
                 Transactions
@@ -551,16 +557,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="parts" className="space-y-4">
+        <Tabs defaultValue="interactions" className="space-y-4">
           {/* Top tab navigation */}
           <div className="flex justify-center">
             <TabsList className="inline-flex items-center gap-6 rounded-full bg-muted px-4 py-1 text-muted-foreground">
-            <TabsTrigger
-              value="parts"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
-            >
-              Parts
-            </TabsTrigger>
             <TabsTrigger
               value="interactions"
               className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-border data-[state=inactive]:border-transparent data-[state=inactive]:shadow-none data-[state=inactive]:bg-transparent"
@@ -575,219 +575,6 @@ export default function DashboardPage() {
             </TabsTrigger>
           </TabsList>
           </div>
-
-          {/* Parts Tab */}
-          <TabsContent value="parts" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Your Parts Listings</CardTitle>
-                <CardDescription className="mt-1">
-                  Manage your electronic parts inventory and listings
-                </CardDescription>
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-                    <div className="relative flex-1 max-w-sm">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Search parts..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All categories</SelectItem>
-                          {categories.map(category => (
-                            <SelectItem key={category} value={category}>{category}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-[160px]">
-                          <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All statuses</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                          <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                          <SelectItem value="sold">Sold</SelectItem>
-                          <SelectItem value="draft">Draft</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        placeholder="Min Price"
-                        value={priceRange.min}
-                        onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                        className="w-[120px]"
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Max Price"
-                        value={priceRange.max}
-                        onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                        className="w-[120px]"
-                      />
-                      <Button variant="ghost" size="icon" onClick={clearFilters}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead>Product</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Stock</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Views</TableHead>
-                        <TableHead>Saves</TableHead>
-                        <TableHead>Chats</TableHead>
-                        <TableHead>MOQ</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredAllParts.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={11}>
-                            <div className="flex flex-col items-center justify-center py-12 text-center">
-                              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                                <Package className="h-8 w-8 text-primary" />
-                              </div>
-                              <h3 className="mb-2 text-lg font-semibold">
-                                {(originalParts.length + refurbishedParts.length) === 0
-                                  ? "No parts found"
-                                  : "No parts match your current filters"}
-                              </h3>
-                              <p className="mb-4 text-sm text-muted-foreground">
-                                {(originalParts.length + refurbishedParts.length) === 0
-                                  ? "Get started by adding your first part to the marketplace"
-                                  : "Try adjusting your search criteria to see more results"}
-                              </p>
-                              <Button asChild className="bg-primary hover:bg-primary/90">
-                                <Link href="/sell">
-                                  <Plus className="mr-2 h-4 w-4" />
-                                  {(originalParts.length + refurbishedParts.length) === 0
-                                    ? "Add your first part"
-                                    : "Add a new part"}
-                                </Link>
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredAllParts.map((part) => (
-                          <TableRow key={part.id}>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center space-x-3">
-                                <Image
-                                  src={part.images?.[0] || part.image_url || "/placeholder.svg"}
-                                  alt={part.name}
-                                  width={40}
-                                  height={40}
-                                  className="rounded-md"
-                                />
-                                <span>{part.name}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={part.part_type === "refurbished" ? "secondary" : "outline"}>
-                                {part.part_type === "refurbished" ? "Refurbished" : "Original"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{part.category}</TableCell>
-                            <TableCell>R{part.price.toFixed(2)}</TableCell>
-                            <TableCell>{part.stock_quantity}</TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  part.status === "active"
-                                    ? "default"
-                                    : part.status === "out_of_stock"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                              >
-                                {part.status === "active"
-                                  ? "Active"
-                                  : part.status === "out_of_stock"
-                                  ? "Out of Stock"
-                                  : part.status === "draft"
-                                  ? "Draft"
-                                  : part.status === "inactive"
-                                  ? "Inactive"
-                                  : "Sold"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{part.views}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center space-x-1">
-                                <Heart className="h-4 w-4 text-red-500" />
-                                <span>{partInteractions[part.id]?.saves || 0}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center space-x-1">
-                                <MessageCircle className="h-4 w-4 text-blue-500" />
-                                <span>{partInteractions[part.id]?.chats || 0}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {part.moq_units || part.moq || 1}
-                              {part.pack_size_units && (
-                                <div className="text-xs text-muted-foreground">
-                                  Pack: {part.pack_size_units}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleViewPart(part)}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    View
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleEditPart(part)}>
-                                    <Edit className="mr-2 h-4 w-4" />
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="text-red-600"
-                                    onClick={() => handleDeletePart(part)}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Interactions Tab */}
           <TabsContent value="interactions" className="space-y-4">

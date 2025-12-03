@@ -63,6 +63,8 @@ export default function ProfilePage() {
     review_count: 0,
   })
   const [newSpecialization, setNewSpecialization] = useState("")
+  const [distributionLocations, setDistributionLocations] = useState<string[]>([])
+  const [newDistributionLocation, setNewDistributionLocation] = useState("")
   const [shopData, setShopData] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [enableBecomeSeller, setEnableBecomeSeller] = useState(true)
@@ -140,7 +142,7 @@ export default function ProfilePage() {
         try {
           const { data, error } = await supabase
             .from('shops')
-            .select('name, description, rating, review_count, return_policy, shipping_policy, payment_policy, warranty_policy, privacy_policy, terms_of_service, registration_number, owner_name, owner_phone, owner_email')
+            .select('name, description, rating, review_count, return_policy, shipping_policy, payment_policy, warranty_policy, privacy_policy, terms_of_service, registration_number, owner_name, owner_phone, owner_email, distribution_locations')
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -171,6 +173,7 @@ export default function ProfilePage() {
               rating: data.rating || 0,
               review_count: data.review_count || 0,
             })
+            setDistributionLocations(data.distribution_locations || [])
           }
         } catch (err) {
           console.error('Unexpected error fetching shop data:', err)
@@ -280,6 +283,7 @@ export default function ProfilePage() {
           warranty_policy: shopPolicies.warranty_policy,
           privacy_policy: shopPolicies.privacy_policy,
           terms_of_service: shopPolicies.terms_of_service,
+          distribution_locations: distributionLocations,
         }, {
           onConflict: 'user_id'
         })
@@ -355,8 +359,10 @@ export default function ProfilePage() {
         rating: shopData?.rating || 0,
         review_count: shopData?.review_count || 0,
       })
+      setDistributionLocations(shopData?.distribution_locations || [])
     }
     setNewSpecialization("")
+    setNewDistributionLocation("")
     setIsEditing(false)
   }
 
@@ -375,6 +381,17 @@ export default function ProfilePage() {
       ...userProfile,
       specializations: userProfile.specializations.filter((_, i) => i !== index)
     })
+  }
+
+  const addDistributionLocation = () => {
+    if (newDistributionLocation.trim() && !distributionLocations.includes(newDistributionLocation.trim())) {
+      setDistributionLocations([...distributionLocations, newDistributionLocation.trim()])
+      setNewDistributionLocation("")
+    }
+  }
+
+  const removeDistributionLocation = (index: number) => {
+    setDistributionLocations(distributionLocations.filter((_, i) => i !== index))
   }
 
   const handleLogout = async () => {
@@ -845,6 +862,67 @@ export default function ProfilePage() {
                         />
                       ) : (
                         <p className="text-sm text-muted-foreground">{shopProfile.description || "No shop description provided"}</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl border border-border/60 shadow-sm bg-card/90 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MapPin className="h-5 w-5" />
+                      Distribution Center Locations
+                    </CardTitle>
+                    <CardDescription>Add locations where you can ship or deliver items from (cities or full addresses)</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        {distributionLocations.length > 0 ? (
+                          distributionLocations.map((location, index) => (
+                            <div key={index} className="flex items-center gap-1">
+                              <Badge variant="secondary" className="px-3 py-1">
+                                <MapPin className="h-3 w-3 mr-1" />
+                                {location}
+                              </Badge>
+                              {isEditing && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 hover:bg-red-100"
+                                  onClick={() => removeDistributionLocation(index)}
+                                  disabled={isLoading}
+                                >
+                                  <Trash2 className="h-3 w-3 text-red-500" />
+                                </Button>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            {isEditing ? "No distribution locations added yet" : "No distribution locations set"}
+                          </p>
+                        )}
+                      </div>
+                      
+                      {isEditing && (
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Add a location (e.g., Cape Town or full address)..."
+                            value={newDistributionLocation}
+                            onChange={(e) => setNewDistributionLocation(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && addDistributionLocation()}
+                            disabled={isLoading}
+                            className="flex-1"
+                          />
+                          <Button
+                            onClick={addDistributionLocation}
+                            disabled={!newDistributionLocation.trim() || isLoading}
+                            size="sm"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </CardContent>
