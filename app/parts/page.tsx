@@ -130,8 +130,8 @@ export default function PartsPage() {
   }
 
   // Get unique brands and models from parts
-  const availableBrands = Array.from(new Set(parts.map(part => part.brand).filter(Boolean))) as string[]
-  const availableModels = Array.from(new Set(parts.map(part => part.model).filter(Boolean))) as string[]
+  const availableBrands = Array.from(new Set(parts.map((part: any) => part.brand).filter(Boolean))) as string[]
+  const availableModels = Array.from(new Set(parts.map((part: any) => part.model).filter(Boolean))) as string[]
 
   // Get available subcategories based on selected categories
   const availableSubcategories = selectedCategories.length > 0 
@@ -410,7 +410,7 @@ export default function PartsPage() {
 
         {!loading && parts.length > 0 && (
           <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "space-y-4"}>
-            {parts.map((part) => {
+            {parts.map((part: any) => {
               const CategoryIcon = getCategoryIcon(part.category)
               return (
                 <Card key={part.id} className="hover:shadow-lg transition-shadow">
