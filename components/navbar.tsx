@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Cpu } from "lucide-react"
+import { Cpu, Store } from "lucide-react"
 import { CartButton } from "./cart-button"
 import { useAuth } from "@/hooks/use-auth"
 import { useEffect, useState } from "react"
@@ -74,17 +74,13 @@ export function MainNavbar() {
               Wallet
             </Link>
             {isSeller && isFicaVerified && (
-              <>
-                <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-                  Dashboard
-                </Link>
-                <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/inventory">
-                  Inventory
-                </Link>
-                <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard/transactions">
-                  Transactions
-                </Link>
-              </>
+              <Link 
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors bg-blue-50 px-3 py-1.5 rounded-full" 
+                href="/dashboard"
+              >
+                <Store className="h-4 w-4" />
+                Seller Hub
+              </Link>
             )}
             <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
               Profile

@@ -3,9 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
 import {
-  Cpu,
   Plus,
   Search,
   MoreHorizontal,
@@ -30,11 +28,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MainNavbar } from "@/components/navbar"
 import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
-import { Heart, MessageCircle } from "lucide-react"
+import { Heart } from "lucide-react"
 import { PartImageUpload } from "@/components/part-image-upload"
 import { usePartInteractions } from "@/hooks/use-part-interactions"
 
@@ -50,8 +47,6 @@ export default function InventoryPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [partToDelete, setPartToDelete] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isSeller, setIsSeller] = useState<boolean | null>(null)
-  const [accessDenied, setAccessDenied] = useState(false)
   const [distributionLocations, setDistributionLocations] = useState<string[]>([])
   const [editForm, setEditForm] = useState({
     name: "",
@@ -64,8 +59,7 @@ export default function InventoryPage() {
   })
   const [editImages, setEditImages] = useState<string[]>([])
   const [partInteractions, setPartInteractions] = useState<Record<string, any>>({})
-  const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { 
     originalParts, 
     refurbishedParts, 
@@ -76,46 +70,6 @@ export default function InventoryPage() {
   } = useShop()
   const { getMultiplePartInteractions } = usePartInteractions()
   const supabase = createClient()
-
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    }
-  }, [user, authLoading, router])
-
-  // Check if user is seller and FICA verified
-  useEffect(() => {
-    const checkUserStatus = async () => {
-      if (user?.id) {
-        try {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("user_role, is_admin, fica_status")
-            .eq("user_id", user.id)
-            .single()
-
-          const isSeller = profile?.user_role === "seller"
-          const isFicaVerified = profile?.fica_status === "verified"
-          
-          setIsSeller(isSeller)
-          
-          // Redirect if not a seller or not FICA verified
-          if (!isSeller || !isFicaVerified) {
-            setAccessDenied(true)
-            router.push("/profile")
-          }
-        } catch (error) {
-          console.error('Error checking user status:', error)
-          setIsSeller(null)
-          setAccessDenied(true)
-          router.push("/profile")
-        }
-      }
-    }
-
-    checkUserStatus()
-  }, [user?.id, supabase, router])
 
   // Fetch distribution locations
   useEffect(() => {
@@ -300,26 +254,21 @@ export default function InventoryPage() {
     setPriceRange({ min: "", max: "" })
   }
 
-  // Show loading state while checking authentication
-  if (authLoading || loading || isSeller === null || accessDenied) {
+  // Show loading state
+  if (loading) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <MainNavbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading inventory...</p>
-          </div>
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading inventory...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
-      <MainNavbar />
-
-      <main className="flex-1 container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-secondary/20">
+      <main className="container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -338,12 +287,6 @@ export default function InventoryPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button asChild variant="outline">
-              <Link href="/dashboard">
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Dashboard
-              </Link>
-            </Button>
             <Button
               onClick={refreshData}
               variant="outline"

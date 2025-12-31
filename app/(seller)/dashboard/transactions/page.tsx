@@ -3,20 +3,16 @@
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
 import {
   Search,
-  Filter,
   MoreHorizontal,
   Eye,
   Package,
   RefreshCw,
-  ArrowLeft,
   Truck,
   CreditCard,
   Clock,
   CheckCircle,
-  XCircle,
   AlertTriangle,
   MapPin,
   ExternalLink,
@@ -35,7 +31,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { MainNavbar } from "@/components/navbar"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
 
@@ -175,7 +170,6 @@ export default function TransactionsPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
-  const [isSeller, setIsSeller] = useState<boolean | null>(null)
   
   // Edit form state
   const [editStatus, setEditStatus] = useState("")
@@ -184,46 +178,8 @@ export default function TransactionsPage() {
   const [editCarrier, setEditCarrier] = useState("")
   const [editTrackingUrl, setEditTrackingUrl] = useState("")
   
-  const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const supabase = createClient()
-
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    }
-  }, [user, authLoading, router])
-
-  // Check if user is seller and FICA verified
-  useEffect(() => {
-    const checkSellerStatus = async () => {
-      if (user?.id) {
-        try {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("user_role, fica_status")
-            .eq("user_id", user.id)
-            .single()
-
-          const isSeller = profile?.user_role === "seller"
-          const isFicaVerified = profile?.fica_status === "verified"
-          
-          setIsSeller(isSeller)
-          
-          // Redirect if not a seller or not FICA verified
-          if (!isSeller || !isFicaVerified) {
-            router.push("/profile")
-          }
-        } catch (error) {
-          console.error('Error checking seller status:', error)
-          setIsSeller(false)
-        }
-      }
-    }
-
-    checkSellerStatus()
-  }, [user?.id, supabase, router])
 
   // Fetch orders
   const fetchOrders = async (isRefresh = false) => {
@@ -258,14 +214,14 @@ export default function TransactionsPage() {
   }
 
   useEffect(() => {
-    if (user && isSeller) {
+    if (user) {
       fetchOrders()
     }
-  }, [user, isSeller, statusFilter, paymentFilter])
+  }, [user, statusFilter, paymentFilter])
 
   // Handle search with debounce
   useEffect(() => {
-    if (!user || !isSeller) return
+    if (!user) return
     
     const timer = setTimeout(() => {
       fetchOrders()
@@ -384,25 +340,20 @@ export default function TransactionsPage() {
   }
 
   // Show loading state
-  if (authLoading || loading || isSeller === null) {
+  if (loading) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <MainNavbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading transactions...</p>
-          </div>
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading transactions...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
-      <MainNavbar />
-
-      <main className="flex-1 container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-secondary/20">
+      <main className="container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
         {error && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
@@ -413,14 +364,6 @@ export default function TransactionsPage() {
         {/* Header */}
         <div className="mb-2 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Button asChild variant="ghost" size="sm" className="gap-1">
-                <Link href="/dashboard">
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to Dashboard
-                </Link>
-              </Button>
-            </div>
             <h2 className="text-3xl font-bold tracking-tight">Transactions</h2>
             <p className="text-muted-foreground mt-1">
               Manage customer orders and update shipping information

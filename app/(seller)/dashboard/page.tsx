@@ -5,20 +5,13 @@ import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
-  Cpu,
   Plus,
-  Search,
-  Filter,
-  MoreHorizontal,
-  Edit,
-  Trash2,
   Eye,
   Package,
   Wrench,
   Store,
   TrendingUp,
   RefreshCw,
-  X,
   Wallet,
   Lock,
 } from "lucide-react"
@@ -27,21 +20,18 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CartButton } from "@/components/cart-button"
-import { MainNavbar } from "@/components/navbar"
 import { useShop } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
 import { useFica } from "@/hooks/use-fica"
 import { usePartInteractions } from "@/hooks/use-part-interactions"
 import { createClient } from "@/utils/supabase/client"
-import { Shield, MessageCircle, Heart, Upload, FileText } from "lucide-react"
+import { Shield, MessageCircle, Heart, FileText } from "lucide-react"
 import { PartImageUpload } from "@/components/part-image-upload"
 import { FicaUpload } from "@/components/fica-upload"
 
@@ -57,8 +47,6 @@ export default function DashboardPage() {
   const [partToDelete, setPartToDelete] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [isSeller, setIsSeller] = useState<boolean | null>(null)
-  const [accessDenied, setAccessDenied] = useState(false)
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
@@ -72,70 +60,41 @@ export default function DashboardPage() {
   const [sellerChats, setSellerChats] = useState<any[]>([])
   const [showFicaModal, setShowFicaModal] = useState(false)
   const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { 
     shopStats, 
     originalParts, 
     refurbishedParts, 
-    recentOrders, 
     loading, 
     refreshing,
     error, 
     refreshData 
   } = useShop()
-  const { ficaStatus, documents, loading: ficaLoading } = useFica()
+  const { ficaStatus, documents } = useFica()
   const { getMultiplePartInteractions, getSellerChats } = usePartInteractions()
   const supabase = createClient()
 
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    }
-  }, [user, authLoading, router])
-
-  // Check if user is admin, seller, and FICA verified
+  // Check if user is admin
   useEffect(() => {
     const checkUserStatus = async () => {
       if (user?.id) {
         try {
           const { data: profile } = await supabase
             .from("user_profiles")
-            .select("user_role, is_admin, fica_status")
+            .select("is_admin")
             .eq("user_id", user.id)
             .single()
 
           setIsAdmin(Boolean(profile?.is_admin))
-          const isSeller = profile?.user_role === "seller"
-          const isFicaVerified = profile?.fica_status === "verified"
-          
-          setIsSeller(isSeller)
-          
-          // Redirect if not a seller or not FICA verified
-          if (!isSeller || !isFicaVerified) {
-            setAccessDenied(true)
-            router.push("/profile")
-          }
         } catch (error) {
           console.error('Error checking user status:', error)
           setIsAdmin(false)
-          setIsSeller(null)
-          setAccessDenied(true)
-          router.push("/profile")
         }
       }
     }
 
     checkUserStatus()
-  }, [user?.id, supabase, router])
-
-  // Redirect non-seller users away from dashboard
-  useEffect(() => {
-    if (!authLoading && user && isSeller === false) {
-      setAccessDenied(true)
-      router.push("/profile")
-    }
-  }, [authLoading, user, isSeller, router])
+  }, [user?.id, supabase])
 
   // Fetch part interactions and chats
   useEffect(() => {
@@ -313,26 +272,21 @@ export default function DashboardPage() {
     setPriceRange({ min: "", max: "" })
   }
 
-  // Show loading state while checking authentication
-  if (authLoading || loading || isSeller === null || accessDenied) {
+  // Show loading state
+  if (loading) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <MainNavbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading dashboard...</p>
-          </div>
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20 flex flex-col">
-      <MainNavbar />
-
-      <main className="flex-1 container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-secondary/20">
+      <main className="container mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -355,18 +309,6 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
-            <Button asChild variant="outline">
-              <Link href="/inventory">
-                <Package className="mr-2 h-4 w-4" />
-                Inventory
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/dashboard/transactions">
-                <Package className="mr-2 h-4 w-4" />
-                Transactions
-              </Link>
-            </Button>
             <Button
               onClick={refreshData}
               variant="outline"
@@ -443,26 +385,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
           </Link>
-          {/* <Card className="border-l-4 border-l-chart-2">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Active Listings
-              </CardTitle>
-              <CardAction>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-chart-2/10">
-                  <Package className="h-5 w-5 text-chart-2" />
-                </div>
-              </CardAction>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {(originalParts.filter(p => p.status === 'active').length + refurbishedParts.filter(p => p.status === 'active').length)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {originalParts.length + refurbishedParts.length} total parts listed
-              </p>
-            </CardContent>
-          </Card> */}
           <Card className="border-l-4 border-l-chart-3">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -1072,3 +994,4 @@ export default function DashboardPage() {
     </div>
   )
 }
+

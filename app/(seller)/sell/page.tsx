@@ -10,9 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Package, DollarSign, Cpu, Info, MapPin } from "lucide-react"
+import { Package, DollarSign, Info, MapPin } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { CartButton } from "@/components/cart-button"
 import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
@@ -32,7 +31,7 @@ interface CategoryCommission {
 
 export default function SellPage() {
   const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const supabase = createClient()
   const { ficaStatus, canPublishListings } = useFica()
   
@@ -180,13 +179,6 @@ export default function SellPage() {
     
     fetchFeeSettings()
   }, [supabase])
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    }
-  }, [user, authLoading, router])
 
   // Fetch distribution locations from user's shop
   useEffect(() => {
@@ -477,55 +469,9 @@ export default function SellPage() {
     }
   }
 
-  // Show loading state while checking authentication
-  if (authLoading) {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
-          <Link className="flex items-center justify-center" href="/">
-            <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-            <span className="font-bold text-xl">Techafon</span>
-          </Link>
-        </header>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="px-4 lg:px-6 h-14 flex items-center border-b bg-white">
-        <Link className="flex items-center justify-center" href="/">
-          <Cpu className="h-6 w-6 mr-2 text-blue-600" />
-          <span className="font-bold text-xl">Techafon</span>
-        </Link>
-        <nav className="ml-auto flex gap-4 sm:gap-6 items-center">
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/parts">
-            Browse Parts
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/favorites">
-            Favorites
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/messages">
-            Messages
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/dashboard">
-            Dashboard
-          </Link>
-          <Link className="text-sm font-medium hover:text-blue-600 transition-colors" href="/profile">
-            Profile
-          </Link>
-          <CartButton />
-        </nav>
-      </header>
-
-      <div className="flex-1 max-w-4xl mx-auto px-4 py-8">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-secondary/20">
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">List a New Item</h1>
           <p className="text-gray-600">Add your item to the marketplace</p>
@@ -1175,3 +1121,4 @@ export default function SellPage() {
     </div>
   )
 }
+
