@@ -385,7 +385,10 @@ export default function SellPage() {
         pack_size_units: formData.pack_size_units ? parseInt(formData.pack_size_units) : null,
         stock_on_hand_units: formData.stock_on_hand_units ? parseInt(formData.stock_on_hand_units) : 0,
         backorder_allowed: formData.backorder_allowed,
-        lead_time_days: formData.lead_time_days ? parseInt(formData.lead_time_days) : null
+        lead_time_days: formData.lead_time_days ? parseInt(formData.lead_time_days) : null,
+        // Location fields
+        location_city: formData.location_city || null,
+        location_town: formData.location_town || null
       }
 
       // Insert part into database

@@ -161,9 +161,10 @@ async function fetchParts(supabase: ReturnType<typeof createClient>, filters: Pa
   if (filters.categories.length > 0) {
     query = query.in('category', filters.categories)
   }
-  // Note: subcategories, brands, models, and location filters are not supported
+  // Note: subcategories, brands, and models filters are not directly supported
   // as those columns don't exist in the database schema
   // The data is stored in description and search_keywords instead
+  // Location filtering is now supported via the location_city column
   if (filters.conditions.length > 0) {
     query = query.in('part_type', filters.conditions)
   }
@@ -173,11 +174,11 @@ async function fetchParts(supabase: ReturnType<typeof createClient>, filters: Pa
   if (filters.priceRange.max !== null) {
     query = query.lte('price', filters.priceRange.max)
   }
-  // Location search - search in description since location_city column doesn't exist
+  // Location filter - filter by location_city column
   if (filters.location) {
     const sanitizedLocation = sanitizeSearchInput(filters.location)
     if (sanitizedLocation) {
-      query = query.ilike('description', `%${sanitizedLocation}%`)
+      query = query.ilike('location_city', `%${sanitizedLocation}%`)
     }
   }
 

@@ -567,7 +567,78 @@ export async function POST(req: NextRequest) {
           // Don't fail the payment notification, just log the error
         }
 
-        // Stock was already deducted at order creation time, no need to do anything here
+        // ============================================================
+        // Decrement Stock for Successful Payment
+        // ============================================================
+        // Payment confirmed - decrement stock for each item in the order
+        try {
+          // Get order items to decrement stock
+          const { data: completeOrderItems, error: completeItemsError } = await supabase
+            .from("order_items")
+            .select("part_id, quantity")
+            .eq("order_id", orderId)
+
+          if (completeItemsError) {
+            console.error(`Error fetching order items for completed order ${orderId}:`, completeItemsError)
+          } else if (completeOrderItems && completeOrderItems.length > 0) {
+            // Decrement stock for each item
+            // Note: This uses a fetch-then-update pattern. For better atomicity in production,
+            // consider creating an RPC function that uses FOR UPDATE locking
+            for (const item of completeOrderItems) {
+              try {
+                // Fetch current stock
+                const { data: part, error: partError } = await supabase
+                  .from("parts")
+                  .select("stock_quantity")
+                  .eq("id", item.part_id)
+                  .single()
+
+                if (partError) {
+                  console.error(`Error fetching part ${item.part_id} for stock update:`, partError)
+                  continue
+                }
+
+                if (!part) {
+                  console.error(`Part ${item.part_id} not found`)
+                  continue
+                }
+
+                // Calculate new stock (ensure it doesn't go negative)
+                const newStock = Math.max(0, part.stock_quantity - item.quantity)
+                
+                // Update stock
+                const { error: updateError } = await supabase
+                  .from("parts")
+                  .update({ stock_quantity: newStock })
+                  .eq("id", item.part_id)
+
+                if (updateError) {
+                  console.error(`Error decrementing stock for part ${item.part_id}:`, updateError)
+                } else {
+                  console.log(`Stock decremented for part ${item.part_id}: ${part.stock_quantity} -> ${newStock} (decremented ${item.quantity})`)
+                }
+              } catch (error) {
+                console.error(`Unexpected error decrementing stock for part ${item.part_id}:`, error)
+              }
+            }
+            
+            logAudit({
+              event_type: "order_update",
+              success: true,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              details: { 
+                action: "stock_decremented",
+                reason: "payment_completed",
+                items_count: completeOrderItems.length
+              },
+            })
+          }
+        } catch (error) {
+          console.error("Error decrementing stock for completed payment:", error)
+          // Log error but don't fail the IPN - stock can be manually adjusted if needed
+        }
 
         break
 
@@ -625,52 +696,10 @@ export async function POST(req: NextRequest) {
           }
 
           // ============================================================
-          // Restore Stock for Failed Payment
+          // Stock Handling for Failed Payment
           // ============================================================
-          // Payment failed - restore the stock that was deducted at order creation
-          try {
-            // Get order items to restore stock
-            const { data: failedOrderItems, error: failedItemsError } = await supabase
-              .from("order_items")
-              .select("part_id, quantity")
-              .eq("order_id", orderId)
-
-            if (failedItemsError) {
-              console.error(`Error fetching order items for failed order ${orderId}:`, failedItemsError)
-            } else if (failedOrderItems && failedOrderItems.length > 0) {
-              // Restore stock for each item
-              for (const item of failedOrderItems) {
-                const { data: part } = await supabase
-                  .from("parts")
-                  .select("stock_quantity")
-                  .eq("id", item.part_id)
-                  .single()
-
-                if (part) {
-                  await supabase
-                    .from("parts")
-                    .update({ stock_quantity: part.stock_quantity + item.quantity })
-                    .eq("id", item.part_id)
-                }
-              }
-              console.log(`Stock restored for failed order ${orderId}`)
-              logAudit({
-                event_type: "order_update",
-                success: true,
-                order_id: orderId,
-                payment_id: paymentId,
-                client_ip: clientIP || undefined,
-                details: { 
-                  action: "stock_released",
-                  reason: "payment_failed",
-                  items_count: failedOrderItems.length
-                },
-              })
-            }
-          } catch (error) {
-            console.error("Error restoring stock for failed payment:", error)
-            // The stock restoration failed but we shouldn't fail the IPN
-          }
+          // Stock is only decremented when payment succeeds, so no restoration needed here
+          // If payment fails, stock was never decremented, so nothing to restore
         }
         break
 

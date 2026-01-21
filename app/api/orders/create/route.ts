@@ -293,28 +293,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ============================================================
-    // STOCK DEDUCTION
+    // STOCK VALIDATION
     // ============================================================
-    // Deduct stock after order creation
-    // Note: For production, consider implementing atomic stock reservation
-    // with pessimistic locking to prevent race conditions
-    
-    for (const item of items) {
-      const partId = item.part_id || (item as any).id
-      const part = partsMap.get(partId)
-      if (!part) continue
-
-      const { error: stockError } = await supabase
-        .from("parts")
-        .update({ stock_quantity: part.stock_quantity - item.quantity })
-        .eq("id", partId)
-
-      if (stockError) {
-        console.error(`Error updating stock for part ${partId}:`, stockError)
-        // Note: In a production system, you'd want to rollback the order here
-        // For now, we log the error but continue
-      }
-    }
+    // Stock is validated above (lines 107-113) before order creation
+    // Stock will be decremented when payment is confirmed in the PayFast IPN handler
+    // This prevents stock from being decremented for unpaid orders
 
     // INFO-004 FIX: Log successful order creation
     await auditLog.order.create(user.id, order.id, calculatedTotalAmount, req)

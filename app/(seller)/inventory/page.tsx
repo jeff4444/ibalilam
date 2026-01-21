@@ -28,12 +28,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useShop } from "@/hooks/use-shop"
+import { useShop, shopQueryKeys } from "@/hooks/use-shop"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/utils/supabase/client"
 import { Heart } from "lucide-react"
 import { PartImageUpload } from "@/components/part-image-upload"
 import { usePartInteractions } from "@/hooks/use-part-interactions"
+import { useQueryClient } from "@tanstack/react-query"
 
 export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -70,6 +71,50 @@ export default function InventoryPage() {
   } = useShop()
   const { getMultiplePartInteractions } = usePartInteractions()
   const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  // Real-time subscription to parts table for automatic stock updates
+  useEffect(() => {
+    if (!user?.id) return
+
+    let channel: ReturnType<typeof supabase.channel> | null = null
+
+    const setupSubscription = async () => {
+      // Get the user's shop_id
+      const { data: shop } = await supabase
+        .from('shops')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!shop?.id) return
+
+      channel = supabase
+        .channel('inventory-updates')
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Listen to INSERT, UPDATE, DELETE
+            schema: 'public',
+            table: 'parts',
+            filter: `shop_id=eq.${shop.id}`
+          },
+          () => {
+            // Invalidate shop cache to refresh inventory data
+            queryClient.invalidateQueries({ queryKey: shopQueryKeys.data(user.id) })
+          }
+        )
+        .subscribe()
+    }
+
+    setupSubscription()
+    
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [user?.id, supabase, queryClient])
 
   // Fetch distribution locations
   useEffect(() => {
