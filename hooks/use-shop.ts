@@ -18,9 +18,11 @@ export interface ShopStats {
   repeat_customer_rate: number
   locked_balance: number
   available_balance: number
+  pending_withdrawal_balance: number
   // Wallet balances (from user_wallets table)
   wallet_available_balance: number
   wallet_locked_balance: number
+  wallet_pending_withdrawal_balance: number
 }
 
 export interface Part {
@@ -120,8 +122,10 @@ async function fetchShopData(supabase: ReturnType<typeof createClient>, userId: 
           repeat_customer_rate: 0,
           locked_balance: 0,
           available_balance: 0,
+          pending_withdrawal_balance: 0,
           wallet_available_balance: 0,
           wallet_locked_balance: 0,
+          wallet_pending_withdrawal_balance: 0,
         },
         originalParts: [],
         refurbishedParts: [],
@@ -147,15 +151,17 @@ async function fetchShopData(supabase: ReturnType<typeof createClient>, userId: 
   // Get user wallet data
   let walletAvailableBalance = 0
   let walletLockedBalance = 0
+  let walletPendingWithdrawalBalance = 0
   const { data: wallet } = await supabase
     .from('user_wallets')
-    .select('available_balance, locked_balance')
+    .select('available_balance, locked_balance, pending_withdrawal_balance')
     .eq('user_id', userId)
     .single()
 
   if (wallet) {
     walletAvailableBalance = parseFloat(wallet.available_balance?.toString() || '0')
     walletLockedBalance = parseFloat(wallet.locked_balance?.toString() || '0')
+    walletPendingWithdrawalBalance = parseFloat(wallet.pending_withdrawal_balance?.toString() || '0')
   }
 
   // Set shop stats from shop data
@@ -174,8 +180,10 @@ async function fetchShopData(supabase: ReturnType<typeof createClient>, userId: 
     repeat_customer_rate: shop.repeat_customer_rate || 0,
     locked_balance: shop.locked_balance || 0,
     available_balance: shop.available_balance || 0,
+    pending_withdrawal_balance: shop.pending_withdrawal_balance || 0,
     wallet_available_balance: walletAvailableBalance,
     wallet_locked_balance: walletLockedBalance,
+    wallet_pending_withdrawal_balance: walletPendingWithdrawalBalance,
   }
 
   // Get original parts

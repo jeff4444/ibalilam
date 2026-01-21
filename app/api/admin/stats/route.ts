@@ -1,28 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Fetch all stats in parallel
+    // Fetch all stats in parallel using admin client
     const [
       usersResult,
       shopsResult,
@@ -31,12 +29,12 @@ export async function GET(request: NextRequest) {
       transactionsResult,
       walletSettingsResult
     ] = await Promise.all([
-      supabase.from('user_profiles').select('user_role, fica_status, created_at'),
-      supabase.from('shops').select('is_active, locked_balance, available_balance'),
-      supabase.from('parts').select('status'),
-      supabase.from('orders').select('status, payment_status, total_amount'),
-      supabase.from('transactions').select('status, amount'),
-      supabase.from('global_settings').select('setting_key, setting_value').in('setting_key', [
+      supabaseAdmin.from('user_profiles').select('user_role, fica_status, created_at'),
+      supabaseAdmin.from('shops').select('is_active, locked_balance, available_balance'),
+      supabaseAdmin.from('parts').select('status'),
+      supabaseAdmin.from('orders').select('status, payment_status, total_amount'),
+      supabaseAdmin.from('transactions').select('status, amount'),
+      supabaseAdmin.from('global_settings').select('setting_key, setting_value').in('setting_key', [
         'platform_available_balance',
         'platform_locked_balance',
         'platform_total_commissions',
@@ -112,4 +110,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

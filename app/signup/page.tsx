@@ -2,19 +2,37 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Cpu, Eye, EyeOff } from "lucide-react"
+import { Cpu, Eye, EyeOff, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 
 import { createClient } from '@/utils/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { MainNavbar } from '@/components/navbar'
+
+// VULN-019 FIX: Strong password validation requirements
+interface PasswordRequirement {
+  label: string
+  test: (password: string) => boolean
+}
+
+const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
+  { label: "At least 12 characters", test: (p) => p.length >= 12 },
+  { label: "One uppercase letter (A-Z)", test: (p) => /[A-Z]/.test(p) },
+  { label: "One lowercase letter (a-z)", test: (p) => /[a-z]/.test(p) },
+  { label: "One number (0-9)", test: (p) => /[0-9]/.test(p) },
+  { label: "One special character (!@#$%^&*)", test: (p) => /[!@#$%^&*(),.?":{}|<>]/.test(p) },
+]
+
+const COMMON_PATTERNS = ['password', '123456', 'qwerty', 'admin', 'letmein', 'welcome', 'monkey', 'dragon']
 
 export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -41,6 +59,23 @@ export default function SignUpPage() {
     }
   }, [user, router])
 
+  // VULN-019 FIX: Calculate password strength and requirements
+  const passwordAnalysis = useMemo(() => {
+    const password = formData.password
+    const metRequirements = PASSWORD_REQUIREMENTS.filter(req => req.test(password))
+    const hasCommonPattern = COMMON_PATTERNS.some(p => password.toLowerCase().includes(p))
+    const strength = Math.min(100, (metRequirements.length / PASSWORD_REQUIREMENTS.length) * 100)
+    
+    return {
+      metRequirements,
+      allMet: metRequirements.length === PASSWORD_REQUIREMENTS.length && !hasCommonPattern,
+      hasCommonPattern,
+      strength,
+      strengthLabel: strength < 40 ? 'Weak' : strength < 80 ? 'Medium' : 'Strong',
+      strengthColor: strength < 40 ? 'bg-red-500' : strength < 80 ? 'bg-yellow-500' : 'bg-green-500',
+    }
+  }, [formData.password])
+
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     // Clear error when user starts typing
@@ -61,9 +96,30 @@ export default function SignUpPage() {
     return emailRegex.test(email)
   }
 
-  const validatePassword = (password: string) => {
-    if (password.length < 6) return "Password must be at least 6 characters long"
-    if (password.length > 128) return "Password must be less than 128 characters"
+  // VULN-019 FIX: Strong password validation
+  const validatePassword = (password: string): string => {
+    if (password.length < 12) {
+      return "Password must be at least 12 characters long"
+    }
+    if (password.length > 128) {
+      return "Password must be less than 128 characters"
+    }
+    if (!/[A-Z]/.test(password)) {
+      return "Password must contain at least one uppercase letter"
+    }
+    if (!/[a-z]/.test(password)) {
+      return "Password must contain at least one lowercase letter"
+    }
+    if (!/[0-9]/.test(password)) {
+      return "Password must contain at least one number"
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return "Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)"
+    }
+    // Check for common patterns
+    if (COMMON_PATTERNS.some(p => password.toLowerCase().includes(p))) {
+      return "Password contains a common pattern. Please choose a stronger password."
+    }
     return ""
   }
 
@@ -141,8 +197,27 @@ export default function SignUpPage() {
           return
         }
         
-        // The user profile should be created automatically by the database trigger
-        // Just redirect the user - no need to manually create profile
+        // Create user profile since database triggers may not be set up
+        try {
+          const { error: profileError } = await supabase
+            .from('user_profiles')
+            .upsert({
+              user_id: data.user.id,
+              first_name: formData.firstName,
+              last_name: formData.lastName,
+              full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+              user_role: 'visitor',
+            }, {
+              onConflict: 'user_id'
+            })
+          
+          if (profileError) {
+            console.error("Error creating user profile:", profileError)
+            // Don't fail signup if profile creation fails - it can be created later
+          }
+        } catch (profileErr) {
+          console.error("Unexpected error creating profile:", profileErr)
+        }
         
         // Check if email confirmation is required
         if (data.user.email_confirmed_at) {
@@ -161,8 +236,10 @@ export default function SignUpPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md">
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <MainNavbar />
+      <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <Cpu className="h-8 w-8 mr-2" />
@@ -231,7 +308,7 @@ export default function SignUpPage() {
                   id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Create a password"
+                  placeholder="Create a strong password"
                   value={formData.password}
                   onChange={(e) => handleInputChange("password", e.target.value)}
                   autoComplete="new-password"
@@ -249,6 +326,37 @@ export default function SignUpPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
+              {/* VULN-019 FIX: Password strength indicator */}
+              {formData.password && (
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Progress value={passwordAnalysis.strength} className="h-2 flex-1" />
+                    <span className={`text-xs font-medium ${
+                      passwordAnalysis.strength < 40 ? 'text-red-500' : 
+                      passwordAnalysis.strength < 80 ? 'text-yellow-600' : 'text-green-500'
+                    }`}>
+                      {passwordAnalysis.strengthLabel}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1 text-xs">
+                    {PASSWORD_REQUIREMENTS.map((req, index) => {
+                      const isMet = req.test(formData.password)
+                      return (
+                        <div key={index} className={`flex items-center gap-1 ${isMet ? 'text-green-600' : 'text-gray-500'}`}>
+                          {isMet ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                          <span>{req.label}</span>
+                        </div>
+                      )
+                    })}
+                    {passwordAnalysis.hasCommonPattern && (
+                      <div className="flex items-center gap-1 text-red-500">
+                        <X className="h-3 w-3" />
+                        <span>Avoid common patterns</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
@@ -296,6 +404,7 @@ export default function SignUpPage() {
           </CardFooter>
         </form>
       </Card>
+      </div>
     </div>
   )
 }

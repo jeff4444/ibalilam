@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -31,26 +29,26 @@ export async function GET(request: NextRequest) {
     startDate.setDate(startDate.getDate() - daysAgo)
     startDate.setHours(0, 0, 0, 0)
 
-    // Fetch data for the period
+    // Fetch data for the period using admin client
     const [
       usersResult,
       ordersResult,
       transactionsResult,
       partsResult
     ] = await Promise.all([
-      supabase
+      supabaseAdmin
         .from('user_profiles')
         .select('created_at')
         .gte('created_at', startDate.toISOString()),
-      supabase
+      supabaseAdmin
         .from('orders')
         .select('created_at, status, total_amount, payment_status')
         .gte('created_at', startDate.toISOString()),
-      supabase
+      supabaseAdmin
         .from('transactions')
         .select('created_at, amount, commission_amount, status')
         .gte('created_at', startDate.toISOString()),
-      supabase
+      supabaseAdmin
         .from('parts')
         .select('created_at, status, category, views')
         .gte('created_at', startDate.toISOString())
@@ -138,12 +136,12 @@ export async function GET(request: NextRequest) {
     previousStartDate.setDate(previousStartDate.getDate() - daysAgo)
 
     const [prevUsersResult, prevOrdersResult] = await Promise.all([
-      supabase
+      supabaseAdmin
         .from('user_profiles')
         .select('created_at')
         .gte('created_at', previousStartDate.toISOString())
         .lt('created_at', startDate.toISOString()),
-      supabase
+      supabaseAdmin
         .from('orders')
         .select('total_amount, payment_status')
         .gte('created_at', previousStartDate.toISOString())
@@ -190,4 +188,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

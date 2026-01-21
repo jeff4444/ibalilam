@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { getCsrfHeaders } from "@/lib/csrf-client"
 import { 
   Send, 
   Image as ImageIcon, 
@@ -140,6 +141,7 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({
           message: newMessage.trim(),
@@ -206,6 +208,9 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
 
       const response = await fetch('/api/messages/upload', {
         method: 'POST',
+        headers: {
+          ...getCsrfHeaders(),
+        },
         body: formData,
       })
 
@@ -220,6 +225,7 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({
           message: `📷 Image`,
@@ -253,6 +259,9 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
       setIsRevealingPhone(true)
       const response = await fetch(`/api/messages/${chatId}/reveal-phone`, {
         method: 'POST',
+        headers: {
+          ...getCsrfHeaders(),
+        },
       })
 
       const data = await response.json()
@@ -292,6 +301,9 @@ export function ChatInterface({ chatId, currentUserId, onClose }: ChatInterfaceP
     try {
       await fetch(`/api/messages/${chatId}/safety-tips`, {
         method: 'POST',
+        headers: {
+          ...getCsrfHeaders(),
+        },
       })
       setShowSafetyTips(false)
     } catch (error) {

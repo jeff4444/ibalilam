@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/utils/supabase/client'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   FileCheck,
   Search, 
@@ -146,7 +147,7 @@ export default function FicaReviewPage() {
     try {
       setProcessingUserId(userId)
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -172,7 +173,7 @@ export default function FicaReviewPage() {
     try {
       setProcessingUserId(userId)
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

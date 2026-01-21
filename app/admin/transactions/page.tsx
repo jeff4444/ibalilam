@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   CreditCard, 
   Search, 
@@ -134,7 +135,7 @@ export default function AdminTransactionsPage() {
     try {
       setIsProcessing(true)
 
-      const response = await fetch('/api/admin/transactions', {
+      const response = await fetchWithCsrf('/api/admin/transactions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -219,9 +219,12 @@ export async function POST(
     )
 
     // Trigger notifications (fire and forget)
+    // VULN-023 FIX: Standardize on NEXT_PUBLIC_APP_URL with fallbacks
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || ''
+    
     try {
       // Send email notification
-      fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/notifications/email`, {
+      fetch(`${appUrl}/api/notifications/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -232,7 +235,7 @@ export async function POST(
       }).catch(err => console.error('Email notification error:', err))
 
       // Send push notification
-      fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/notifications/push`, {
+      fetch(`${appUrl}/api/notifications/push`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

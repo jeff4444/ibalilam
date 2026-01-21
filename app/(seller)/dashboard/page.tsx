@@ -79,13 +79,15 @@ export default function DashboardPage() {
     const checkUserStatus = async () => {
       if (user?.id) {
         try {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("is_admin")
+          // Check admin status from admins table (secure - can only be modified via service_role)
+          const { data: admin } = await supabase
+            .from("admins")
+            .select("role, is_active")
             .eq("user_id", user.id)
+            .eq("is_active", true)
             .single()
 
-          setIsAdmin(Boolean(profile?.is_admin))
+          setIsAdmin(Boolean(admin))
         } catch (error) {
           console.error('Error checking user status:', error)
           setIsAdmin(false)

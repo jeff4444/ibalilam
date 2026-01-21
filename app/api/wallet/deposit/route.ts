@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
   try {
+    // Use regular client for auth and reads
     const supabase = await createClient(cookies())
     
     // Get current user
@@ -24,6 +26,15 @@ export async function POST(request: NextRequest) {
     // Minimum deposit amount
     if (amount < 10) {
       return NextResponse.json({ error: 'Minimum deposit amount is R10' }, { status: 400 })
+    }
+
+    // Maximum deposit amount - prevent overflow (VULN-008 fix)
+    // Max single deposit: R100 billion (well below DECIMAL(18,2) limit)
+    const MAX_DEPOSIT_AMOUNT = 100000000000 // R100 billion
+    if (amount > MAX_DEPOSIT_AMOUNT) {
+      return NextResponse.json({ 
+        error: `Maximum deposit amount is R${MAX_DEPOSIT_AMOUNT.toLocaleString()}` 
+      }, { status: 400 })
     }
 
     // Get user profile for name and email
@@ -55,7 +66,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a pending transaction record
-    const { data: pendingTx, error: txError } = await supabase
+    // Use admin client since INSERT policy was removed for security (VULN-005)
+    const { data: pendingTx, error: txError } = await supabaseAdmin
       .from('wallet_transactions')
       .insert({
         wallet_id: wallet.id,
@@ -78,9 +90,17 @@ export async function POST(request: NextRequest) {
     const merchantKey = process.env.MERCHANT_KEY
     const passphrase = process.env.PAYFAST_PASSPHRASE
     const payfastUrl = process.env.PAYFAST_URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+    // VULN-023 FIX: Standardize on NEXT_PUBLIC_APP_URL with fallbacks
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL
 
     if (!merchantId || !merchantKey || !passphrase || !payfastUrl || !baseUrl) {
+      console.error('PayFast configuration missing:', {
+        merchantId: !!merchantId,
+        merchantKey: !!merchantKey,
+        passphrase: !!passphrase,
+        payfastUrl: !!payfastUrl,
+        baseUrl: !!baseUrl
+      })
       return NextResponse.json({ error: 'PayFast not configured' }, { status: 500 })
     }
 

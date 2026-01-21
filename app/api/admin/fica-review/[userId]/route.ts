@@ -1,34 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const supabase = await createClient(cookies(), true)
-    const { userId } = params
+    // Await params before accessing properties (Next.js 15 requirement)
+    const { userId } = await params
 
-    // Check if user is authenticated
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is admin
-    const { data: adminProfile, error: adminError } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (adminError || !adminProfile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Fetch user profile with personal information
-    const { data: profile, error: profileError } = await supabase
+    // Fetch user profile with personal information using admin client
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('user_profiles')
       .select('first_name, last_name, phone, address, user_role, fica_status, fica_rejection_reason, fica_verified_at, fica_reviewed_at, created_at')
       .eq('user_id', userId)
@@ -39,11 +38,11 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Fetch user email from auth
-    const { data: authUser, error: authUserError } = await supabase.auth.admin.getUserById(userId)
+    // Fetch user email from auth using admin client
+    const { data: authUser, error: authUserError } = await supabaseAdmin.auth.admin.getUserById(userId)
     
-    // Fetch shop/business information
-    const { data: shop, error: shopError } = await supabase
+    // Fetch shop/business information using admin client
+    const { data: shop, error: shopError } = await supabaseAdmin
       .from('shops')
       .select('name, registration_number, owner_name, owner_phone, owner_email')
       .eq('user_id', userId)
@@ -53,8 +52,8 @@ export async function GET(
       console.error('Error fetching shop data:', shopError)
     }
 
-    // Fetch FICA documents
-    const { data: documents, error: docsError } = await supabase
+    // Fetch FICA documents using admin client
+    const { data: documents, error: docsError } = await supabaseAdmin
       .from('fica_documents')
       .select('id, document_type, file_url, file_name, uploaded_at')
       .eq('user_id', userId)
@@ -98,4 +97,3 @@ export async function GET(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

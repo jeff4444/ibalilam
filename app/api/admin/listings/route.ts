@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { sanitizeSearchInput } from '@/lib/utils'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -32,8 +31,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Build query
-    let query = supabase
+    // Build query using admin client
+    let query = supabaseAdmin
       .from('parts')
       .select(`
         *,
@@ -43,9 +42,10 @@ export async function GET(request: NextRequest) {
         )
       `, { count: 'exact' })
 
-    // Apply search filter
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
+    // Apply search filter - SECURITY FIX: VULN-010 - Sanitize search input to prevent SQL injection
+    const sanitizedSearch = sanitizeSearchInput(search)
+    if (sanitizedSearch) {
+      query = query.or(`name.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`)
     }
 
     // Apply status filter
@@ -111,21 +111,17 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -137,21 +133,21 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'approve') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('parts')
         .update({ status: 'active', published_at: new Date().toISOString() })
         .eq('id', listing_id)
 
       if (error) throw error
     } else if (action === 'suspend') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('parts')
         .update({ status: 'inactive', admin_notes: updateData.reason })
         .eq('id', listing_id)
 
       if (error) throw error
     } else if (action === 'clear_flag') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('parts')
         .update({ is_flagged: false, flag_reason: null, flag_count: 0 })
         .eq('id', listing_id)
@@ -159,13 +155,13 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error
 
       // Also update related part_flags
-      await supabase
+      await supabaseAdmin
         .from('part_flags')
         .update({ status: 'resolved', resolved_at: new Date().toISOString(), resolved_by: user.id })
         .eq('part_id', listing_id)
         .eq('status', 'pending')
     } else {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('parts')
         .update(updateData)
         .eq('id', listing_id)
@@ -179,4 +175,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

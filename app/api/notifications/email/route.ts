@@ -111,6 +111,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Send email notification
+    // VULN-023 FIX: Standardize on NEXT_PUBLIC_APP_URL with fallbacks
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || ''
+    
     const emailData = {
       to: authUser.user.email,
       subject: `New message about ${chatPart.name}`,
@@ -123,8 +126,8 @@ export async function POST(request: NextRequest) {
         partImage: chatPart.image_url,
         messageText: message.message_text,
         messageType: message.message_type,
-        chatUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/messages?chat=${chatId}`,
-        partUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/parts/${chatPart.id}`
+        chatUrl: `${appUrl}/messages?chat=${chatId}`,
+        partUrl: `${appUrl}/parts/${chatPart.id}`
       }
     }
 

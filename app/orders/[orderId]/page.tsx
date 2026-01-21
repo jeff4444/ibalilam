@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { fetchWithCsrf } from "@/lib/csrf-client"
 import { Separator } from "@/components/ui/separator"
 import {
   AlertDialog,
@@ -133,7 +134,7 @@ export default function OrderDetailPage() {
 
     try {
       setCancelling(true)
-      const response = await fetch(`/api/orders/${orderId}`, {
+      const response = await fetchWithCsrf(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel" })

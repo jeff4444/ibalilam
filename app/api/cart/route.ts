@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
           stock_on_hand_units,
           backorder_allowed,
           lead_time_days,
-          condition_status,
+          part_type,
           shops!inner(
             name
           )
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       quantity: item.quantity,
       image: item.parts.image_url || '/placeholder.svg',
       seller: item.parts.shops.name,
-      condition: item.parts.condition_status || 'new',
+      condition: item.parts.part_type || 'original',
       stock: item.parts.stock_quantity || 0,
       moqUnits: item.parts.moq_units || 1,
       orderIncrement: item.parts.order_increment || 1,

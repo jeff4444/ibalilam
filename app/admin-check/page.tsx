@@ -9,9 +9,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function AdminCheckPage() {
   const [userProfile, setUserProfile] = useState<any>(null)
+  const [adminRecord, setAdminRecord] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [settingAdmin, setSettingAdmin] = useState(false)
   
   const { user } = useAuth()
   const supabase = createClient()
@@ -27,6 +27,7 @@ export default function AdminCheckPage() {
       try {
         console.log('Checking profile for user:', user.id)
         
+        // Fetch user profile
         const { data: profile, error: profileError } = await supabase
           .from('user_profiles')
           .select('*')
@@ -41,6 +42,21 @@ export default function AdminCheckPage() {
         } else {
           setUserProfile(profile)
         }
+
+        // Check admin status from admins table (secure - can only be modified via service_role)
+        const { data: admin, error: adminError } = await supabase
+          .from('admins')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        console.log('Admin data:', admin)
+        console.log('Admin error:', adminError)
+
+        if (!adminError) {
+          setAdminRecord(admin)
+        }
       } catch (err: any) {
         console.error('Error:', err)
         setError(`Unexpected error: ${err.message}`)
@@ -52,37 +68,7 @@ export default function AdminCheckPage() {
     checkUserProfile()
   }, [user, supabase])
 
-  const setAsAdmin = async () => {
-    if (!user) return
-
-    try {
-      setSettingAdmin(true)
-      
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ is_admin: true })
-        .eq('user_id', user.id)
-
-      if (error) {
-        console.error('Error setting admin:', error)
-        setError(`Failed to set admin: ${error.message}`)
-      } else {
-        console.log('Successfully set as admin')
-        // Refresh the profile
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single()
-        setUserProfile(profile)
-      }
-    } catch (err: any) {
-      console.error('Error setting admin:', err)
-      setError(`Unexpected error: ${err.message}`)
-    } finally {
-      setSettingAdmin(false)
-    }
-  }
+  const isAdmin = Boolean(adminRecord)
 
   if (loading) {
     return (
@@ -100,7 +86,7 @@ export default function AdminCheckPage() {
       <div>
         <h1 className="text-3xl font-bold">Admin Status Check</h1>
         <p className="text-muted-foreground">
-          Debug page to check and set admin status
+          Debug page to check admin status (admin management requires database access)
         </p>
       </div>
 
@@ -139,13 +125,21 @@ export default function AdminCheckPage() {
               <div>
                 <strong>Admin Access:</strong>
                 <span className={`ml-2 px-2 py-1 rounded text-sm ${
-                  userProfile.is_admin
+                  isAdmin
                     ? 'bg-green-100 text-green-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {userProfile.is_admin ? 'Enabled' : 'Disabled'}
+                  {isAdmin ? 'Enabled' : 'Disabled'}
                 </span>
               </div>
+              {adminRecord && (
+                <div>
+                  <strong>Admin Role:</strong>
+                  <span className="ml-2 px-2 py-1 rounded text-sm bg-purple-100 text-purple-800">
+                    {adminRecord.role}
+                  </span>
+                </div>
+              )}
               <div><strong>FICA Status:</strong> {userProfile.fica_status || 'Not set'}</div>
             </div>
           )}
@@ -154,22 +148,29 @@ export default function AdminCheckPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Admin Actions</CardTitle>
-          <CardDescription>Set user as admin for testing</CardDescription>
+          <CardTitle>Admin Management</CardTitle>
+          <CardDescription>
+            Admin status is now managed in a separate secure table
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button 
-            onClick={setAsAdmin}
-            disabled={settingAdmin || userProfile?.is_admin}
-            className="w-full"
-          >
-            {settingAdmin ? 'Setting...' : 'Set as Admin'}
-          </Button>
+          <Alert>
+            <AlertDescription>
+              <p className="mb-2">
+                <strong>Security Note:</strong> Admin status can only be modified via direct database access 
+                using the service role. This prevents privilege escalation attacks.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                To add an admin, run the SQL script in <code>scripts/make_user_admin.sql</code> 
+                with your database credentials.
+              </p>
+            </AlertDescription>
+          </Alert>
           
-          {userProfile?.is_admin && (
+          {isAdmin && (
             <Alert className="mt-4">
               <AlertDescription>
-                ✅ You are already an admin! You should be able to access /admin now.
+                ✅ You are an admin ({adminRecord.role})! You should be able to access /admin now.
               </AlertDescription>
             </Alert>
           )}

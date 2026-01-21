@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { sanitizeSearchInput } from '@/lib/utils'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -31,8 +30,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Build query
-    let query = supabase
+    // Build query using admin client
+    let query = supabaseAdmin
       .from('orders')
       .select(`
         *,
@@ -50,9 +49,10 @@ export async function GET(request: NextRequest) {
         )
       `, { count: 'exact' })
 
-    // Apply search filter
-    if (search) {
-      query = query.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%`)
+    // Apply search filter - SECURITY FIX: VULN-010 - Sanitize search input to prevent SQL injection
+    const sanitizedSearch = sanitizeSearchInput(search)
+    if (sanitizedSearch) {
+      query = query.or(`order_number.ilike.%${sanitizedSearch}%,customer_name.ilike.%${sanitizedSearch}%,customer_email.ilike.%${sanitizedSearch}%`)
     }
 
     // Apply status filter
@@ -123,21 +123,17 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -157,21 +153,21 @@ export async function PATCH(request: NextRequest) {
         statusUpdate.delivered_at = new Date().toISOString()
       }
 
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('orders')
         .update(statusUpdate)
         .eq('id', order_id)
 
       if (error) throw error
     } else if (action === 'update_payment') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('orders')
         .update({ payment_status: updateData.payment_status })
         .eq('id', order_id)
 
       if (error) throw error
     } else {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('orders')
         .update(updateData)
         .eq('id', order_id)
@@ -185,4 +181,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

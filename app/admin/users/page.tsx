@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/utils/supabase/client'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   Users, 
   Search, 
@@ -128,7 +129,7 @@ export default function AdminUsersPage() {
     try {
       setIsProcessing(true)
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -161,7 +162,7 @@ export default function AdminUsersPage() {
       const suspensionUntil = new Date()
       suspensionUntil.setDate(suspensionUntil.getDate() + suspensionDays)
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -190,7 +191,7 @@ export default function AdminUsersPage() {
     try {
       setIsProcessing(true)
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -380,7 +381,7 @@ export default function AdminUsersPage() {
                           {user.is_admin && (
                             <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
                               <Shield className="h-3 w-3 mr-1" />
-                              Admin
+                              {user.admin_role || 'Admin'}
                             </Badge>
                           )}
                         </div>
@@ -522,7 +523,11 @@ export default function AdminUsersPage() {
                 </div>
                 <div>
                   <Label className="text-slate-400">Admin Access</Label>
-                  <p className="text-white">{selectedUser.is_admin ? 'Yes' : 'No'}</p>
+                  <p className="text-white">
+                    {selectedUser.is_admin 
+                      ? `Yes (${selectedUser.admin_role || 'admin'})` 
+                      : 'No'}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-slate-400">Joined</Label>

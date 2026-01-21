@@ -11,17 +11,97 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's chats with unread counts
-    const { data: chats, error } = await supabase.rpc('get_user_chats_with_unread', {
-      user_uuid: user.id
-    })
+    // Get user's chats with related data using direct query instead of RPC
+    // This avoids the ambiguous column reference issue in the database function
+    const { data: chats, error } = await supabase
+      .from('part_chats')
+      .select(`
+        id,
+        part_id,
+        buyer_id,
+        seller_id,
+        is_active,
+        last_message_at,
+        phone_revealed_by_buyer,
+        phone_revealed_by_seller,
+        parts!inner (
+          id,
+          name,
+          image_url
+        ),
+        part_chat_messages (
+          id,
+          message_text,
+          created_at,
+          sender_id
+        )
+      `)
+      .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
+      .eq('is_active', true)
+      .order('last_message_at', { ascending: false })
 
     if (error) {
       console.error('Error fetching chats:', error)
       return NextResponse.json({ error: 'Failed to fetch chats' }, { status: 500 })
     }
 
-    return NextResponse.json({ chats })
+    // Get user profiles for the other users in each chat
+    const otherUserIds = new Set<string>()
+    chats?.forEach(chat => {
+      if (chat.buyer_id === user.id) {
+        otherUserIds.add(chat.seller_id)
+      } else {
+        otherUserIds.add(chat.buyer_id)
+      }
+    })
+
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('user_id, full_name, avatar_url')
+      .in('user_id', Array.from(otherUserIds))
+
+    const profilesMap = new Map(profiles?.map(p => [p.user_id, p]) || [])
+
+    // Get unread counts for each chat
+    const { data: readStatuses } = await supabase
+      .from('message_read_status')
+      .select('message_id')
+      .eq('user_id', user.id)
+
+    const readMessageIds = new Set(readStatuses?.map(r => r.message_id) || [])
+
+    // Transform the data to match the expected format
+    const transformedChats = chats?.map(chat => {
+      const part = Array.isArray(chat.parts) ? chat.parts[0] : chat.parts
+      const messages = chat.part_chat_messages || []
+      const lastMessage = messages.sort((a: any, b: any) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0]
+
+      const otherUserId = chat.buyer_id === user.id ? chat.seller_id : chat.buyer_id
+      const otherUserProfile = profilesMap.get(otherUserId)
+
+      // Count unread messages (messages from other user that haven't been read)
+      const unreadCount = messages.filter((m: any) => 
+        m.sender_id !== user.id && !readMessageIds.has(m.id)
+      ).length
+
+      return {
+        chat_id: chat.id,
+        part_id: part?.id,
+        part_name: part?.name,
+        part_image: part?.image_url,
+        other_user_id: otherUserId,
+        other_user_name: otherUserProfile?.full_name || 'Unknown User',
+        other_user_avatar: otherUserProfile?.avatar_url,
+        last_message_text: lastMessage?.message_text,
+        last_message_at: lastMessage?.created_at || chat.last_message_at,
+        unread_count: unreadCount,
+        phone_revealed: chat.phone_revealed_by_buyer && chat.phone_revealed_by_seller
+      }
+    }) || []
+
+    return NextResponse.json({ chats: transformedChats })
   } catch (error) {
     console.error('Error in GET /api/messages:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -121,9 +201,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Trigger notifications (fire and forget)
+    // VULN-023 FIX: Standardize on NEXT_PUBLIC_APP_URL with fallbacks
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || ''
+    
     try {
       // Send email notification
-      fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/notifications/email`, {
+      fetch(`${appUrl}/api/notifications/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,7 +217,7 @@ export async function POST(request: NextRequest) {
       }).catch(err => console.error('Email notification error:', err))
 
       // Send push notification
-      fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/notifications/push`, {
+      fetch(`${appUrl}/api/notifications/push`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

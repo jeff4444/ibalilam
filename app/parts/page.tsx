@@ -447,9 +447,9 @@ export default function PartsPage() {
                         )}
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xl font-bold text-green-600">{formatPrice(part.price)}</span>
-                          {part.condition_status && (
+                          {part.part_type && (
                             <Badge variant="outline" className="capitalize">
-                              {part.condition_status}
+                              {part.part_type}
                             </Badge>
                           )}
                         </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from './use-auth'
+import { getCsrfHeaders } from '@/lib/csrf-client'
 
 interface Message {
   id: string
@@ -130,6 +131,7 @@ export function useMessaging() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({
           message,
@@ -170,6 +172,7 @@ export function useMessaging() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({
           partId,
@@ -203,6 +206,9 @@ export function useMessaging() {
     try {
       const response = await fetch(`/api/messages/${chatId}/reveal-phone`, {
         method: 'POST',
+        headers: {
+          ...getCsrfHeaders(),
+        },
       })
 
       const data = await response.json()
@@ -232,6 +238,9 @@ export function useMessaging() {
     try {
       const response = await fetch(`/api/messages/${chatId}/safety-tips`, {
         method: 'POST',
+        headers: {
+          ...getCsrfHeaders(),
+        },
       })
 
       if (!response.ok) {
@@ -256,6 +265,9 @@ export function useMessaging() {
 
       const response = await fetch('/api/messages/upload', {
         method: 'POST',
+        headers: {
+          ...getCsrfHeaders(),
+        },
         body: formData,
       })
 

@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   Store, 
   Search, 
@@ -98,7 +99,7 @@ export default function AdminShopsPage() {
     try {
       setIsProcessing(true)
 
-      const response = await fetch('/api/admin/shops', {
+      const response = await fetchWithCsrf('/api/admin/shops', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation"
 import { XCircle, ArrowLeft, HelpCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { fetchWithCsrf } from "@/lib/csrf-client"
 
 export default function PaymentCancelledPage() {
   const searchParams = useSearchParams()
@@ -18,7 +19,7 @@ export default function PaymentCancelledPage() {
 
       setDeletionStatus("deleting")
       try {
-        const response = await fetch(`/api/orders/${orderId}`, {
+        const response = await fetchWithCsrf(`/api/orders/${orderId}`, {
           method: "DELETE",
         })
 

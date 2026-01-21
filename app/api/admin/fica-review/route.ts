@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { verifyAdmin } from '@/lib/auth-utils'
+import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
-    
-    // Check if user is authenticated
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is admin
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('user_role, is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (profileError || !profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -36,16 +34,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Rejection reason is required' }, { status: 400 })
     }
 
-    // Update FICA status using the database function
-    const { error: updateError } = await supabase.rpc('update_fica_status', {
-      p_user_id: targetUserId,
-      p_status: action,
-      p_reason: reason || null
-    })
+    // Update FICA status directly using admin client
+    // We do this instead of using the RPC function because auth.uid() is null with service role
+    const updateData: Record<string, unknown> = {
+      fica_status: action,
+      fica_reviewed_by: user.id,
+      fica_reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    if (action === 'verified') {
+      updateData.fica_verified_at = new Date().toISOString()
+      updateData.fica_rejection_reason = null
+    } else if (action === 'rejected') {
+      updateData.fica_rejection_reason = reason
+      updateData.fica_verified_at = null
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('user_profiles')
+      .update(updateData)
+      .eq('user_id', targetUserId)
 
     if (updateError) {
       console.error('Error updating FICA status:', updateError)
       return NextResponse.json({ error: 'Failed to update FICA status' }, { status: 500 })
+    }
+
+    // Log the action in audit log
+    const auditAction = action === 'verified' ? 'approved' : 'rejected'
+    const { error: logError } = await supabaseAdmin
+      .from('fica_audit_log')
+      .insert({
+        user_id: targetUserId,
+        action: auditAction,
+        performed_by: user.id,
+        reason: reason || null
+      })
+
+    if (logError) {
+      console.error('Error logging FICA action:', logError)
+      // Don't fail the request if logging fails
     }
 
     return NextResponse.json({ success: true })
@@ -57,30 +86,25 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
-    
-    // Check if user is authenticated
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is admin
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('user_role, is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (profileError || !profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
 
-    // Build query
-    let query = supabase
+    // Build query using admin client
+    let query = supabaseAdmin
       .from('user_profiles')
       .select(`
         *,

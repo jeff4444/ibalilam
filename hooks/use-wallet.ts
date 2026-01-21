@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/utils/supabase/client'
+import { getCsrfHeaders } from '@/lib/csrf-client'
 
 interface Wallet {
   id: string
   availableBalance: number
   lockedBalance: number
+  pendingWithdrawalBalance: number
   totalBalance: number
   totalDeposited: number
   totalWithdrawn: number
@@ -122,7 +124,10 @@ export function useWallet(): UseWalletReturn {
     try {
       const response = await fetch('/api/wallet/deposit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
+        },
         body: JSON.stringify({ amount })
       })
 
@@ -147,7 +152,10 @@ export function useWallet(): UseWalletReturn {
     try {
       const response = await fetch('/api/wallet/withdraw', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
+        },
         body: JSON.stringify({ amount, bankDetails })
       })
 

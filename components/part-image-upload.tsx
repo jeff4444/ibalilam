@@ -24,6 +24,25 @@ interface UploadingImage {
   preview: string
 }
 
+// VULN-018 FIX: Client-side secure file validation
+const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'] as const
+const MIME_TO_EXTENSION: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
+function getSecureExtension(mimeType: string): string | null {
+  return MIME_TO_EXTENSION[mimeType.toLowerCase()] || null
+}
+
+function generateSecureFilename(extension: string): string {
+  const timestamp = Date.now()
+  const random = Math.random().toString(36).substring(2, 18)
+  return `${timestamp}-${random}.${extension}`
+}
+
 export function PartImageUpload({ 
   images, 
   onImagesChange, 
@@ -52,13 +71,13 @@ export function PartImageUpload({
       return
     }
 
-    // Validate files
+    // Validate files - VULN-018 FIX: Use MIME type validation
     const validFiles: File[] = []
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
     const maxSize = 10 * 1024 * 1024 // 10MB
 
     for (const file of fileArray) {
-      if (!allowedTypes.includes(file.type)) {
+      // Validate MIME type (more reliable than filename extension)
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as any)) {
         toast({
           title: 'Invalid file type',
           description: `${file.name} is not a supported image format. Please use JPG, PNG, or WebP.`,
@@ -71,6 +90,15 @@ export function PartImageUpload({
         toast({
           title: 'File too large',
           description: `${file.name} is larger than 10MB. Please compress the image.`,
+          variant: 'destructive',
+        })
+        continue
+      }
+
+      if (file.size === 0) {
+        toast({
+          title: 'Empty file',
+          description: `${file.name} appears to be empty.`,
           variant: 'destructive',
         })
         continue
@@ -106,8 +134,14 @@ export function PartImageUpload({
 
     try {
       const uploadPromises = files.map(async (file, index) => {
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+        // VULN-018 FIX: Get extension from MIME type (more secure than filename)
+        const extension = getSecureExtension(file.type)
+        if (!extension) {
+          throw new Error(`Invalid file type for ${file.name}`)
+        }
+        
+        // Generate secure filename (prevents path traversal)
+        const fileName = generateSecureFilename(extension)
         const filePath = `parts/${user.id}/${fileName}`
 
         // Upload to Supabase Storage

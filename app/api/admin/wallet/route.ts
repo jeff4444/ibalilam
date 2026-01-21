@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -30,8 +28,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Fetch wallet balance settings
-    const { data: walletSettings } = await supabase
+    // Fetch wallet balance settings using admin client
+    const { data: walletSettings } = await supabaseAdmin
       .from('global_settings')
       .select('setting_key, setting_value')
       .in('setting_key', [
@@ -46,8 +44,8 @@ export async function GET(request: NextRequest) {
       return parseFloat(setting?.setting_value || '0')
     }
 
-    // Build query for wallet transactions
-    let query = supabase
+    // Build query for wallet transactions using admin client
+    let query = supabaseAdmin
       .from('admin_wallet_transactions')
       .select(`
         *,
@@ -76,7 +74,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error
 
     // Fetch shops with balances for payout management
-    const { data: shopsWithBalance } = await supabase
+    const { data: shopsWithBalance } = await supabaseAdmin
       .from('shops')
       .select('id, name, available_balance, locked_balance')
       .gt('available_balance', 0)
@@ -125,21 +123,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -152,7 +146,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Verify shop has sufficient balance
-      const { data: shop } = await supabase
+      const { data: shop } = await supabaseAdmin
         .from('shops')
         .select('available_balance, name')
         .eq('id', shop_id)
@@ -167,7 +161,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Record the payout
-      const { data: tx, error: txError } = await supabase
+      const { data: tx, error: txError } = await supabaseAdmin
         .from('admin_wallet_transactions')
         .insert({
           transaction_type: 'payout',
@@ -187,7 +181,7 @@ export async function POST(request: NextRequest) {
       if (txError) throw txError
 
       // Deduct from shop balance
-      const { error: shopError } = await supabase
+      const { error: shopError } = await supabaseAdmin
         .from('shops')
         .update({ 
           available_balance: parseFloat(shop.available_balance) - amount,
@@ -198,13 +192,13 @@ export async function POST(request: NextRequest) {
       if (shopError) throw shopError
 
       // Update total payouts
-      const { data: currentPayouts } = await supabase
+      const { data: currentPayouts } = await supabaseAdmin
         .from('global_settings')
         .select('setting_value')
         .eq('setting_key', 'platform_total_payouts')
         .single()
 
-      await supabase
+      await supabaseAdmin
         .from('global_settings')
         .update({ 
           setting_value: (parseFloat(currentPayouts?.setting_value || '0') + amount).toString(),
@@ -219,7 +213,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Get current balance
-      const { data: currentBalance } = await supabase
+      const { data: currentBalance } = await supabaseAdmin
         .from('global_settings')
         .select('setting_value')
         .eq('setting_key', 'platform_available_balance')
@@ -228,7 +222,7 @@ export async function POST(request: NextRequest) {
       const newBalance = parseFloat(currentBalance?.setting_value || '0') + amount
 
       // Record the adjustment
-      const { data: tx, error: txError } = await supabase
+      const { data: tx, error: txError } = await supabaseAdmin
         .from('admin_wallet_transactions')
         .insert({
           transaction_type: 'adjustment',
@@ -245,7 +239,7 @@ export async function POST(request: NextRequest) {
       if (txError) throw txError
 
       // Update platform balance
-      await supabase
+      await supabaseAdmin
         .from('global_settings')
         .update({ 
           setting_value: newBalance.toString(),
@@ -262,4 +256,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

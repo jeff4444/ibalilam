@@ -189,13 +189,15 @@ export default function ProfilePage() {
     const checkAdminStatus = async () => {
       if (user?.id) {
         try {
-          const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('is_admin')
+          // Check admin status from admins table (secure - can only be modified via service_role)
+          const { data: admin } = await supabase
+            .from('admins')
+            .select('role, is_active')
             .eq('user_id', user.id)
+            .eq('is_active', true)
             .single()
 
-          setIsAdmin(Boolean(profile?.is_admin))
+          setIsAdmin(Boolean(admin))
         } catch (error) {
           console.error('Error checking admin status:', error)
           setIsAdmin(false)
@@ -217,15 +219,15 @@ export default function ProfilePage() {
           .single()
 
         if (error) {
-          console.error('Error fetching enable_become_seller flag:', error)
-          // Default to true if fetch fails
+          // Silently default to true if feature_flags table doesn't exist or flag not found
+          // This is expected in development or when migrations haven't been run
           setEnableBecomeSeller(true)
           return
         }
 
         setEnableBecomeSeller(data?.flag_value ?? true)
       } catch (err) {
-        console.error('Unexpected error fetching feature flag:', err)
+        // Default to true on any error
         setEnableBecomeSeller(true)
       }
     }

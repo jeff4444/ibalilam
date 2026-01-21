@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = await createClient(cookieStore, true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -31,8 +28,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Build query - fetch shops first
-    let query = supabase
+    // Build query using admin client
+    let query = supabaseAdmin
       .from('shops')
       .select('*', { count: 'exact' })
 
@@ -60,7 +57,7 @@ export async function GET(request: NextRequest) {
     let ownerProfiles: Record<string, any> = {}
     
     if (userIds.length > 0) {
-      const { data: profiles } = await supabase
+      const { data: profiles } = await supabaseAdmin
         .from('user_profiles')
         .select('user_id, full_name, first_name, last_name, fica_status')
         .in('user_id', userIds)
@@ -114,22 +111,17 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = await createClient(cookieStore, true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -141,21 +133,21 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'activate') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('shops')
         .update({ is_active: true })
         .eq('id', shop_id)
 
       if (error) throw error
     } else if (action === 'deactivate') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('shops')
         .update({ is_active: false })
         .eq('id', shop_id)
 
       if (error) throw error
     } else {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('shops')
         .update(updateData)
         .eq('id', shop_id)
@@ -169,4 +161,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

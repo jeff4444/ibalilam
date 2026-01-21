@@ -12,7 +12,6 @@ export interface PartDetail {
   model: string | null
   location_city: string | null
   location_town: string | null
-  condition_status: 'new' | 'refurbished' | 'used' | null
   has_box: boolean | null
   has_charger: boolean | null
   price: number

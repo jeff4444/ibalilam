@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { sanitizeSearchInput } from '@/lib/utils'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -31,8 +30,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Build query
-    let query = supabase
+    // Build query using admin client
+    let query = supabaseAdmin
       .from('transactions')
       .select(`
         *,
@@ -47,19 +46,21 @@ export async function GET(request: NextRequest) {
       `, { count: 'exact' })
 
     // Apply search filter (search by order number or payment intent)
-    if (search) {
+    // SECURITY FIX: VULN-010 - Sanitize search input to prevent SQL injection
+    const sanitizedSearch = sanitizeSearchInput(search)
+    if (sanitizedSearch) {
       // First get order IDs that match the search
-      const { data: matchingOrders } = await supabase
+      const { data: matchingOrders } = await supabaseAdmin
         .from('orders')
         .select('id')
-        .or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%`)
+        .or(`order_number.ilike.%${sanitizedSearch}%,customer_name.ilike.%${sanitizedSearch}%,customer_email.ilike.%${sanitizedSearch}%`)
 
       const orderIds = matchingOrders?.map(o => o.id) || []
       
       if (orderIds.length > 0) {
-        query = query.or(`payment_intent_id.ilike.%${search}%,order_id.in.(${orderIds.join(',')})`)
+        query = query.or(`payment_intent_id.ilike.%${sanitizedSearch}%,order_id.in.(${orderIds.join(',')})`)
       } else {
-        query = query.ilike('payment_intent_id', `%${search}%`)
+        query = query.ilike('payment_intent_id', `%${sanitizedSearch}%`)
       }
     }
 
@@ -124,21 +125,17 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -150,7 +147,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'release_escrow') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('transactions')
         .update({ 
           escrow_status: 'released',
@@ -162,28 +159,28 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error
 
       // Also release the funds to the seller
-      const { data: tx } = await supabase
+      const { data: tx } = await supabaseAdmin
         .from('transactions')
         .select('order_id, seller_amount')
         .eq('id', transaction_id)
         .single()
 
       if (tx) {
-        const { data: order } = await supabase
+        const { data: order } = await supabaseAdmin
           .from('orders')
           .select('shop_id')
           .eq('id', tx.order_id)
           .single()
 
         if (order) {
-          await supabase.rpc('release_escrow_funds', {
+          await supabaseAdmin.rpc('release_escrow_funds', {
             p_shop_id: order.shop_id,
             p_amount: tx.seller_amount
           })
         }
       }
     } else if (action === 'refund') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('transactions')
         .update({ 
           status: 'refunded',
@@ -195,7 +192,7 @@ export async function PATCH(request: NextRequest) {
 
       if (error) throw error
     } else if (action === 'dispute') {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('transactions')
         .update({ 
           status: 'disputed',
@@ -206,7 +203,7 @@ export async function PATCH(request: NextRequest) {
 
       if (error) throw error
     } else {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('transactions')
         .update(updateData)
         .eq('id', transaction_id)
@@ -220,4 +217,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

@@ -15,6 +15,7 @@ import Link from "next/link"
 import { useSeller } from "@/hooks/use-seller"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CartButton } from "@/components/cart-button"
+import { fetchWithCsrf } from "@/lib/csrf-client"
 
 export default function ContactSellerPage({ params }: { params: Promise<{ sellerId: string }> }) {
   const [message, setMessage] = useState("")
@@ -34,7 +35,7 @@ export default function ContactSellerPage({ params }: { params: Promise<{ seller
     setSubmitSuccess(false)
 
     try {
-      const response = await fetch('/api/contact-seller', {
+      const response = await fetchWithCsrf('/api/contact-seller', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

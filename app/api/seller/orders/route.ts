@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
+import { sanitizeSearchInput } from "@/lib/utils"
 
 export async function GET(request: NextRequest) {
   try {
@@ -108,8 +109,10 @@ export async function GET(request: NextRequest) {
       query = query.lte("created_at", endDate)
     }
 
-    if (search) {
-      query = query.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%`)
+    // SECURITY FIX: VULN-010 - Sanitize search input to prevent SQL injection
+    const sanitizedSearch = sanitizeSearchInput(search)
+    if (sanitizedSearch) {
+      query = query.or(`order_number.ilike.%${sanitizedSearch}%,customer_name.ilike.%${sanitizedSearch}%,customer_email.ilike.%${sanitizedSearch}%`)
     }
 
     // Apply pagination

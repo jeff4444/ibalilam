@@ -45,7 +45,7 @@ export default function SellPage() {
     description: "",
     category: "",
     subcategory: "",
-    condition_status: "",
+    part_type: "" as "" | "original" | "refurbished",
     brand: "",
     model: "",
     price: "",
@@ -330,22 +330,42 @@ export default function SellPage() {
         throw new Error('No shop found. Please complete your profile first.')
       }
 
-      // Prepare part data - price is now the listing price (what buyers see)
+      // Prepare part data - only include columns that exist in the database schema
+      // Category-specific fields (subcategory, brand, model, location, accessory_type, etc.) 
+      // are stored in the description or search_keywords since they don't have dedicated columns
       const partData = {
         shop_id: shop.id,
         name: formData.name,
-        description: formData.description,
+        description: [
+          formData.description,
+          formData.brand ? `Brand: ${formData.brand}` : null,
+          formData.model ? `Model: ${formData.model}` : null,
+          formData.subcategory ? `Subcategory: ${formData.subcategory}` : null,
+          formData.location_city ? `Location: ${formData.location_city}${formData.location_town ? `, ${formData.location_town}` : ''}` : null,
+          formData.storage_capacity ? `Storage: ${formData.storage_capacity}` : null,
+          formData.imei ? `IMEI: ${formData.imei}` : null,
+          formData.network_status ? `Network: ${formData.network_status}` : null,
+          formData.has_box ? 'Includes original box' : null,
+          formData.has_charger ? 'Includes charger' : null,
+          formData.part_type_detail ? `Part Type: ${formData.part_type_detail}` : null,
+          formData.model_compatibility ? `Compatible with: ${formData.model_compatibility}` : null,
+          formData.accessory_type ? `Accessory Type: ${formData.accessory_type}` : null,
+          formData.cpu ? `CPU: ${formData.cpu}` : null,
+          formData.ram ? `RAM: ${formData.ram}` : null,
+          formData.storage ? `Storage: ${formData.storage}` : null,
+          formData.screen_size ? `Screen Size: ${formData.screen_size}` : null,
+          formData.battery_health ? `Battery Health: ${formData.battery_health}%` : null,
+          formData.kit_type ? `Kit Type: ${formData.kit_type}` : null,
+          formData.age_group ? `Age Group: ${formData.age_group}` : null,
+          formData.electronics_subcategory ? `Electronics Type: ${formData.electronics_subcategory}` : null,
+          formData.key_specs ? `Key Specs: ${formData.key_specs}` : null,
+        ].filter(Boolean).join('\n\n'),
         category: formData.category,
-        subcategory: formData.subcategory,
-        brand: formData.brand,
-        model: formData.model,
-        condition_status: formData.condition_status,
-        part_type: formData.condition_status === 'refurbished' ? 'refurbished' : 'original',
-        location_city: formData.location_city,
-        location_town: formData.location_town,
+        part_type: formData.part_type || 'original',
         price: parseFloat(formData.price), // Listing price (what buyers see)
         stock_quantity: parseInt(formData.quantity),
         status: 'active',
+        published_at: new Date().toISOString(), // Required for search_parts RPC function
         image_url: images[0] || null,
         images: images.length > 0 ? images : null,
         search_keywords: [
@@ -353,28 +373,13 @@ export default function SellPage() {
           formData.category,
           formData.subcategory,
           formData.brand,
-          formData.model
+          formData.model,
+          formData.location_city,
+          formData.accessory_type,
+          formData.part_type_detail,
+          formData.model_compatibility,
         ].filter(Boolean),
-        // Category-specific fields
-        storage_capacity: formData.storage_capacity || null,
-        imei: formData.imei || null,
-        network_status: formData.network_status || null,
-        has_box: formData.has_box,
-        has_charger: formData.has_charger,
-        part_type_detail: formData.part_type_detail || null,
-        model_compatibility: formData.model_compatibility || null,
-        moq: formData.moq ? parseInt(formData.moq) : null,
-        accessory_type: formData.accessory_type || null,
-        cpu: formData.cpu || null,
-        ram: formData.ram || null,
-        storage: formData.storage || null,
-        screen_size: formData.screen_size || null,
-        battery_health: formData.battery_health ? parseInt(formData.battery_health) : null,
-        kit_type: formData.kit_type || null,
-        age_group: formData.age_group || null,
-        electronics_subcategory: formData.electronics_subcategory || null,
-        key_specs: formData.key_specs || null,
-        // MOQ fields
+        // MOQ fields (these columns exist in the schema)
         moq_units: formData.moq_units ? parseInt(formData.moq_units) : 1,
         order_increment: formData.order_increment ? parseInt(formData.order_increment) : 1,
         pack_size_units: formData.pack_size_units ? parseInt(formData.pack_size_units) : null,
@@ -420,7 +425,7 @@ export default function SellPage() {
         description: "",
         category: "",
         subcategory: "",
-        condition_status: "",
+        part_type: "" as "" | "original" | "refurbished",
         brand: "",
         model: "",
         price: "",
@@ -634,19 +639,18 @@ export default function SellPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="condition_status">Condition *</Label>
+                  <Label htmlFor="part_type">Condition *</Label>
                   <Select 
-                    value={formData.condition_status}
-                    onValueChange={(value) => handleInputChange('condition_status', value)}
+                    value={formData.part_type}
+                    onValueChange={(value) => handleInputChange('part_type', value)}
                     required
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select condition" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="original">Original/New</SelectItem>
                       <SelectItem value="refurbished">Refurbished</SelectItem>
-                      <SelectItem value="used">Used</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

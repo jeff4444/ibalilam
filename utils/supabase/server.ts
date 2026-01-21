@@ -1,16 +1,20 @@
-
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabaseAdminKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export const createClient = async (cookieStore: ReturnType<typeof cookies>, isAdmin: boolean = false) => {
+/**
+ * Creates a Supabase client for server-side operations with user context.
+ * 
+ * This client uses the anon key and respects Row Level Security (RLS) policies.
+ * For operations requiring elevated privileges, use supabaseAdmin from '@/utils/supabase/admin'.
+ */
+export const createClient = async (cookieStore: ReturnType<typeof cookies>) => {
   const cookies = await cookieStore
   return createServerClient(
     supabaseUrl!,
-    isAdmin ? supabaseAdminKey! : supabaseKey!,
+    supabaseKey!,
     {
       cookies: {
         getAll() {

@@ -3,6 +3,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { createClient } from "@/utils/supabase/client"
+import { getCsrfHeaders } from "@/lib/csrf-client"
 
 // Helper function to validate MOQ quantity
 function validateMOQQuantity(item: CartItem): { isValid: boolean; error?: string; suggestedQuantity?: number } {
@@ -91,7 +92,10 @@ async function syncCartItemToDB(partId: string, quantity: number, tierPrice?: nu
     
     const response = await fetch('/api/cart', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getCsrfHeaders(),
+      },
       body: JSON.stringify({
         partId,
         quantity,
@@ -118,6 +122,9 @@ async function removeCartItemFromDB(partId: string) {
     
     const response = await fetch(`/api/cart?partId=${partId}`, {
       method: 'DELETE',
+      headers: {
+        ...getCsrfHeaders(),
+      },
     })
     
     if (!response.ok) {
@@ -138,7 +145,10 @@ async function addCartItemToDB(partId: string, quantity: number, tierPrice?: num
     
     const response = await fetch('/api/cart', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getCsrfHeaders(),
+      },
       body: JSON.stringify({
         partId,
         quantity,

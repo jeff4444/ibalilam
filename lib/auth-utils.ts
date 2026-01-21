@@ -47,3 +47,63 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   (window as any).clearAuthCache = clearAuthCache
   (window as any).clearAllCache = clearAllCache
 }
+
+// ============================================================
+// Server-side admin verification utilities
+// ============================================================
+
+import { SupabaseClient } from '@supabase/supabase-js'
+
+export type AdminRole = 'super_admin' | 'admin' | 'moderator'
+
+export interface AdminInfo {
+  isAdmin: boolean
+  role: AdminRole | null
+  userId: string
+}
+
+/**
+ * Verify if a user is an admin by checking the admins table
+ * This is the secure way to check admin status - the admins table
+ * can only be modified via service_role
+ */
+export async function verifyAdmin(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<AdminInfo> {
+  const { data: admin, error } = await supabase
+    .from('admins')
+    .select('role, is_active')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single()
+
+  if (error || !admin) {
+    return { isAdmin: false, role: null, userId }
+  }
+
+  return {
+    isAdmin: true,
+    role: admin.role as AdminRole,
+    userId
+  }
+}
+
+/**
+ * Check if user has at least the specified admin role
+ * Role hierarchy: super_admin > admin > moderator
+ */
+export function hasMinimumRole(
+  userRole: AdminRole | null,
+  requiredRole: AdminRole
+): boolean {
+  if (!userRole) return false
+
+  const roleHierarchy: Record<AdminRole, number> = {
+    'super_admin': 3,
+    'admin': 2,
+    'moderator': 1
+  }
+
+  return roleHierarchy[userRole] >= roleHierarchy[requiredRole]
+}

@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/utils/supabase/client'
+import { sanitizeSearchInput } from '@/lib/utils'
 
 export interface Part {
   id: string
@@ -12,7 +13,6 @@ export interface Part {
   model: string | null
   location_city: string | null
   location_town: string | null
-  condition_status: 'new' | 'refurbished' | 'used' | null
   has_box: boolean | null
   has_charger: boolean | null
   price: number
@@ -134,90 +134,75 @@ export const partsQueryKeys = {
 
 // Fetch function for parts
 async function fetchParts(supabase: ReturnType<typeof createClient>, filters: PartsFilters) {
-  // Try the new search function first, fallback to traditional query if it fails
+  // Use direct query instead of RPC function since search_parts requires published_at IS NOT NULL
+  // which may not be set for all parts
   let data, error
-  
-  try {
-    const rpcParams = {
-      search_text: filters.search || '',
-      category_name: filters.categories.length > 0 ? filters.categories[0] : '',
-      min_price_val: filters.priceRange.min || 0,
-      max_price_val: filters.priceRange.max || 999999,
-      sort_order: filters.sortBy || 'relevance'
-    }
-    
-    const result = await supabase.rpc('search_parts', rpcParams)
-    data = result.data
-    error = result.error
-    
-    if (error) {
-      throw new Error(error.message)
-    }
-  } catch (rpcError) {
-    console.warn('RPC function failed, falling back to traditional query:', rpcError)
-    // Fallback to traditional query
-    let query = supabase
-      .from('parts')
-      .select(`
-        *,
-        shops!inner(
-          name,
-          rating,
-          review_count,
-          user_id
-        )
-      `)
-      .eq('status', 'active')
 
-    // Apply filters
-    if (filters.search) {
-      query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,brand.ilike.%${filters.search}%,model.ilike.%${filters.search}%`)
-    }
-    if (filters.categories.length > 0) {
-      query = query.in('category', filters.categories)
-    }
-    if (filters.subcategories.length > 0) {
-      query = query.in('subcategory', filters.subcategories)
-    }
-    if (filters.brands.length > 0) {
-      query = query.in('brand', filters.brands)
-    }
-    if (filters.conditions.length > 0) {
-      query = query.in('condition_status', filters.conditions)
-    }
-    if (filters.priceRange.min !== null) {
-      query = query.gte('price', filters.priceRange.min)
-    }
-    if (filters.priceRange.max !== null) {
-      query = query.lte('price', filters.priceRange.max)
-    }
-    if (filters.location) {
-      query = query.or(`location_city.ilike.%${filters.location}%,location_town.ilike.%${filters.location}%`)
-    }
+  let query = supabase
+    .from('parts')
+    .select(`
+      *,
+      shops!inner(
+        name,
+        rating,
+        review_count,
+        user_id
+      )
+    `)
+    .eq('status', 'active')
 
-    // Apply sorting
-    switch (filters.sortBy) {
-      case 'price-low':
-        query = query.order('price', { ascending: true })
-        break
-      case 'price-high':
-        query = query.order('price', { ascending: false })
-        break
-      case 'newest':
-        query = query.order('created_at', { ascending: false })
-        break
-      case 'most-viewed':
-        query = query.order('views', { ascending: false })
-        break
-      default:
-        query = query.order('views', { ascending: false }).order('created_at', { ascending: false })
-        break
-    }
-
-    const result = await query.limit(50)
-    data = result.data
-    error = result.error
+  // Apply filters - only use columns that exist in the schema
+  // SECURITY FIX: VULN-010 - Sanitize search input to prevent SQL injection
+  const sanitizedSearch = sanitizeSearchInput(filters.search)
+  if (sanitizedSearch) {
+    // Search in name, description, and search_keywords (which contains brand, model, etc.)
+    query = query.or(`name.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`)
   }
+  if (filters.categories.length > 0) {
+    query = query.in('category', filters.categories)
+  }
+  // Note: subcategories, brands, models, and location filters are not supported
+  // as those columns don't exist in the database schema
+  // The data is stored in description and search_keywords instead
+  if (filters.conditions.length > 0) {
+    query = query.in('part_type', filters.conditions)
+  }
+  if (filters.priceRange.min !== null) {
+    query = query.gte('price', filters.priceRange.min)
+  }
+  if (filters.priceRange.max !== null) {
+    query = query.lte('price', filters.priceRange.max)
+  }
+  // Location search - search in description since location_city column doesn't exist
+  if (filters.location) {
+    const sanitizedLocation = sanitizeSearchInput(filters.location)
+    if (sanitizedLocation) {
+      query = query.ilike('description', `%${sanitizedLocation}%`)
+    }
+  }
+
+  // Apply sorting
+  switch (filters.sortBy) {
+    case 'price-low':
+      query = query.order('price', { ascending: true })
+      break
+    case 'price-high':
+      query = query.order('price', { ascending: false })
+      break
+    case 'newest':
+      query = query.order('created_at', { ascending: false })
+      break
+    case 'most-viewed':
+      query = query.order('views', { ascending: false })
+      break
+    default:
+      query = query.order('views', { ascending: false }).order('created_at', { ascending: false })
+      break
+  }
+
+  const result = await query.limit(50)
+  data = result.data
+  error = result.error
 
   if (error) {
     throw new Error(`Failed to fetch parts: ${error.message}`)
@@ -239,7 +224,6 @@ async function fetchParts(supabase: ReturnType<typeof createClient>, filters: Pa
       model: part.model || null,
       location_city: part.location_city || null,
       location_town: part.location_town || null,
-      condition_status: part.condition_status || null,
       has_box: part.has_box || null,
       has_charger: part.has_charger || null,
       price: part.price,
@@ -290,24 +274,18 @@ async function fetchParts(supabase: ReturnType<typeof createClient>, filters: Pa
   return transformedParts
 }
 
-// Fetch function for category hierarchy
-async function fetchCategoryHierarchy(supabase: ReturnType<typeof createClient>) {
-  const { data, error } = await supabase.rpc('get_category_hierarchy')
-  
-  if (error) {
-    console.warn('Failed to fetch category hierarchy:', error)
-    // Fallback to hardcoded hierarchy
-    return [
-      { category: 'mobile_phones', subcategories: ['smartphones', 'feature_phones'] },
-      { category: 'phone_parts', subcategories: ['screen', 'battery', 'charging_port', 'camera', 'speaker', 'microphone', 'housing', 'other'] },
-      { category: 'phone_accessories', subcategories: ['charger', 'case', 'earphones', 'screen_protector', 'cable', 'other'] },
-      { category: 'laptops', subcategories: ['gaming', 'business', 'ultrabook', 'workstation', 'chromebook', 'other'] },
-      { category: 'steam_kits', subcategories: ['coding', 'robotics', 'ai', 'electronics', 'other'] },
-      { category: 'other_electronics', subcategories: ['tv', 'audio', 'gaming', 'networking', 'power', 'other'] }
-    ]
-  }
-  
-  return data || []
+// Fetch function for category hierarchy - returns hardcoded values since the RPC function doesn't exist
+async function fetchCategoryHierarchy(_supabase: ReturnType<typeof createClient>) {
+  // The get_category_hierarchy RPC function doesn't exist in the database
+  // Return hardcoded hierarchy directly
+  return [
+    { category: 'mobile_phones', subcategories: ['smartphones', 'feature_phones'] },
+    { category: 'phone_parts', subcategories: ['screen', 'battery', 'charging_port', 'camera', 'speaker', 'microphone', 'housing', 'other'] },
+    { category: 'phone_accessories', subcategories: ['charger', 'case', 'earphones', 'screen_protector', 'cable', 'other'] },
+    { category: 'laptops', subcategories: ['gaming', 'business', 'ultrabook', 'workstation', 'chromebook', 'other'] },
+    { category: 'steam_kits', subcategories: ['coding', 'robotics', 'ai', 'electronics', 'other'] },
+    { category: 'other_electronics', subcategories: ['tv', 'audio', 'gaming', 'networking', 'power', 'other'] }
+  ]
 }
 
 export function useParts(initialFilters?: Partial<PartsFilters>) {
@@ -359,7 +337,7 @@ export function useParts(initialFilters?: Partial<PartsFilters>) {
   const categories = useMemo(() => categoryHierarchy.map((h: CategoryHierarchy) => h.category), [categoryHierarchy])
   
   const conditions = useMemo(() => {
-    return ['new', 'refurbished', 'used']
+    return ['original', 'refurbished']
   }, [])
 
   // Refresh data

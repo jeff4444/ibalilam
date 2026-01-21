@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   ShoppingCart, 
   Search, 
@@ -145,7 +146,7 @@ export default function AdminOrdersPage() {
     try {
       setIsProcessing(true)
 
-      const response = await fetch('/api/admin/orders', {
+      const response = await fetchWithCsrf('/api/admin/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

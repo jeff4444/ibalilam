@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { fetchWithCsrf } from "@/lib/csrf-client"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -273,7 +274,7 @@ export default function TransactionsPage() {
         return
       }
 
-      const response = await fetch(`/api/seller/orders/${selectedOrder.id}`, {
+      const response = await fetchWithCsrf(`/api/seller/orders/${selectedOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),

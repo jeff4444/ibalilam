@@ -84,7 +84,10 @@ export async function GET(request: NextRequest) {
         id: userWallet.id,
         availableBalance: parseFloat(userWallet.available_balance) || 0,
         lockedBalance: parseFloat(userWallet.locked_balance) || 0,
-        totalBalance: (parseFloat(userWallet.available_balance) || 0) + (parseFloat(userWallet.locked_balance) || 0),
+        pendingWithdrawalBalance: parseFloat(userWallet.pending_withdrawal_balance) || 0,
+        totalBalance: (parseFloat(userWallet.available_balance) || 0) + 
+                      (parseFloat(userWallet.locked_balance) || 0) + 
+                      (parseFloat(userWallet.pending_withdrawal_balance) || 0),
         totalDeposited: parseFloat(userWallet.total_deposited) || 0,
         totalWithdrawn: parseFloat(userWallet.total_withdrawn) || 0,
         createdAt: userWallet.created_at,

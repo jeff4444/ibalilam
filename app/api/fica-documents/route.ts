@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
+import { verifyAdmin } from '@/lib/auth-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,13 +22,9 @@ export async function GET(request: NextRequest) {
 
     // Check if user is admin or requesting their own documents
     if (userId !== user.id) {
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('user_role, is_admin')
-        .eq('user_id', user.id)
-        .single()
-
-      if (profileError || !profile?.is_admin) {
+      // Check admin status from admins table (secure - can only be modified via service_role)
+      const adminInfo = await verifyAdmin(supabase, user.id)
+      if (!adminInfo.isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
@@ -125,15 +123,30 @@ export async function DELETE(request: NextRequest) {
 
     // Check if user owns the document or is admin
     if (document.user_id !== user.id) {
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('user_role, is_admin')
-        .eq('user_id', user.id)
-        .single()
-
-      if (profileError || !profile?.is_admin) {
+      // Check admin status from admins table (secure - can only be modified via service_role)
+      const adminInfo = await verifyAdmin(supabase, user.id)
+      if (!adminInfo.isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
+    }
+
+    // VULN-017 FIX: Check if user is FICA verified - prevent deletion after verification
+    // This provides defense-in-depth alongside the RLS policy
+    const { data: userProfile, error: userProfileError } = await supabase
+      .from('user_profiles')
+      .select('fica_status')
+      .eq('user_id', document.user_id)
+      .single()
+
+    if (userProfileError) {
+      console.error('Error checking FICA status:', userProfileError)
+      return NextResponse.json({ error: 'Failed to verify FICA status' }, { status: 500 })
+    }
+
+    if (userProfile?.fica_status === 'verified') {
+      return NextResponse.json({ 
+        error: 'Cannot delete documents after FICA verification. Contact support for assistance.' 
+      }, { status: 403 })
     }
 
     // Delete document
@@ -150,6 +163,101 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in FICA documents DELETE API:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// PUT - Submit FICA documents for review
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = await createClient(cookies())
+    
+    // Check if user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { action } = await request.json()
+
+    if (action !== 'submit_for_review') {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    }
+
+    // Check if all required documents are uploaded
+    const { data: documents, error: docsError } = await supabase
+      .from('fica_documents')
+      .select('document_type')
+      .eq('user_id', user.id)
+
+    if (docsError) {
+      console.error('Error fetching documents:', docsError)
+      return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 })
+    }
+
+    const requiredTypes = ['id_document', 'proof_of_address', 'id_selfie']
+    const uploadedTypes = documents?.map(d => d.document_type) || []
+    const missingTypes = requiredTypes.filter(type => !uploadedTypes.includes(type))
+
+    if (missingTypes.length > 0) {
+      return NextResponse.json({ 
+        error: `Missing required documents: ${missingTypes.join(', ')}` 
+      }, { status: 400 })
+    }
+
+    // Check current FICA status - don't allow resubmission if already pending or verified
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('fica_status')
+      .eq('user_id', user.id)
+      .single()
+
+    if (profileError) {
+      console.error('Error fetching profile:', profileError)
+      return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 })
+    }
+
+    if (profile?.fica_status === 'pending') {
+      return NextResponse.json({ 
+        error: 'Your documents are already pending review' 
+      }, { status: 400 })
+    }
+
+    if (profile?.fica_status === 'verified') {
+      return NextResponse.json({ 
+        error: 'Your FICA verification is already complete' 
+      }, { status: 400 })
+    }
+
+    // Use admin client to update FICA status (bypasses RLS protection)
+    const { error: updateError } = await supabaseAdmin
+      .from('user_profiles')
+      .update({ fica_status: 'pending' })
+      .eq('user_id', user.id)
+
+    if (updateError) {
+      console.error('Error updating FICA status:', updateError)
+      return NextResponse.json({ error: 'Failed to submit for review' }, { status: 500 })
+    }
+
+    // Log the submission using admin client
+    const { error: logError } = await supabaseAdmin
+      .from('fica_audit_log')
+      .insert({
+        user_id: user.id,
+        action: 'submitted',
+        performed_by: user.id,
+        reason: null
+      })
+
+    if (logError) {
+      console.error('Error logging FICA submission:', logError)
+      // Don't fail the request if logging fails
+    }
+
+    return NextResponse.json({ success: true, message: 'Documents submitted for review' })
+  } catch (error) {
+    console.error('Error in FICA documents PUT API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

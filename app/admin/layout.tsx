@@ -212,13 +212,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
 
       try {
-        const { data: profile, error } = await supabase
-          .from('user_profiles')
-          .select('is_admin')
+        // Check admin status from admins table (secure - can only be modified via service_role)
+        const { data: admin, error } = await supabase
+          .from('admins')
+          .select('role, is_active')
           .eq('user_id', user.id)
+          .eq('is_active', true)
           .single()
 
-        if (error || !profile?.is_admin) {
+        if (error || !admin) {
           setIsAdmin(false)
           router.push('/dashboard')
           return

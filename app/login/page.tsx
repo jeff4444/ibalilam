@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 import { createClient } from '@/utils/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { MainNavbar } from '@/components/navbar'
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -64,8 +65,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <Card className="w-full max-w-md">
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <MainNavbar />
+      <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <Cpu className="h-8 w-8 mr-2" />
@@ -142,6 +145,7 @@ export default function LoginPage() {
           </CardFooter>
         </form>
       </Card>
+      </div>
     </div>
   )
 }

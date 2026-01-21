@@ -286,7 +286,22 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
           .single()
 
         if (error) {
-          console.error('Error checking seller status:', error)
+          // Profile might not exist yet - create it
+          if (error.code === 'PGRST116') {
+            console.log('User profile not found, creating one...')
+            const { error: createError } = await supabase
+              .from('user_profiles')
+              .insert({
+                user_id: user.id,
+                user_role: 'visitor',
+              })
+            
+            if (createError) {
+              console.error('Error creating user profile:', createError)
+            }
+          } else {
+            console.error('Error checking seller status:', error)
+          }
           setIsSeller(false)
           router.push('/profile')
           return

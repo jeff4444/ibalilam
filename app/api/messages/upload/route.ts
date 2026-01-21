@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { 
+  validateFileUpload, 
+  generateSecureFilename,
+  ALLOWED_IMAGE_MIME_TYPES 
+} from '@/lib/file-security'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,21 +23,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Validate file type (only images for now)
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'Invalid file type. Only images are allowed.' }, { status: 400 })
-    }
-
-    // Validate file size (max 5MB)
+    // VULN-018 FIX: Use secure file validation
     const maxSize = 5 * 1024 * 1024 // 5MB
-    if (file.size > maxSize) {
-      return NextResponse.json({ error: 'File too large. Maximum size is 5MB.' }, { status: 400 })
+    const validation = validateFileUpload(
+      { name: file.name, type: file.type, size: file.size },
+      maxSize
+    )
+
+    if (!validation.valid || !validation.extension) {
+      return NextResponse.json({ error: validation.error || 'Invalid file' }, { status: 400 })
     }
 
-    // Generate unique filename
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+    // VULN-018 FIX: Generate secure filename (prevents path traversal)
+    const fileName = generateSecureFilename(user.id, validation.extension)
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage

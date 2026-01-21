@@ -1,71 +1,283 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
-import { createClient } from "@/utils/supabase/server"
-import { cookies } from "next/headers"
+import { supabaseAdmin } from "@/utils/supabase/admin"
+import { 
+  validatePayFastSource, 
+  validatePayFastIPNWithServer, 
+  amountMatchesInCents,
+  toCents,
+  createAuditLogEntry,
+  type PayFastAuditLogEntry
+} from "@/lib/payfast-security"
+
+/**
+ * PayFast IPN (Instant Payment Notification) Handler
+ * 
+ * Security validations performed in order:
+ * 1. IP Validation - Reject if not from PayFast IPs (VULN-002)
+ * 2. Signature Validation - Reject if signature mismatch
+ * 3. Server-to-Server Validation - POST data back to PayFast API (VULN-003)
+ * 4. Merchant ID Verification - Reject if merchant_id doesn't match
+ * 5. Order Existence Check - Reject if order not found
+ * 6. Idempotency Check - Skip if already paid
+ * 7. Amount Verification - Reject if amounts don't match in cents (VULN-003)
+ * 8. Atomic Update - Use optimistic locking (VULN-003)
+ */
+
+// Helper function for structured audit logging
+function logAudit(entry: Omit<PayFastAuditLogEntry, "timestamp">) {
+  const logEntry = createAuditLogEntry({
+    ...entry,
+    timestamp: new Date().toISOString(),
+  })
+  console.log(`[PAYFAST_AUDIT] ${logEntry}`)
+}
 
 export async function POST(req: NextRequest) {
+  const requestTimestamp = new Date().toISOString()
+  let orderId: string | undefined
+  let paymentId: string | undefined
+  let clientIP: string | null = null
+
   try {
+    // ============================================================
+    // STEP 1: IP Validation (VULN-002)
+    // ============================================================
+    const { isValid: isValidIP, clientIP: extractedIP } = validatePayFastSource(req)
+    clientIP = extractedIP
+
+    logAudit({
+      event_type: "ipn_received",
+      success: true,
+      client_ip: clientIP || undefined,
+      details: { timestamp: requestTimestamp },
+    })
+
+    if (!isValidIP) {
+      logAudit({
+        event_type: "ip_validation",
+        success: false,
+        client_ip: clientIP || undefined,
+        error_message: "Invalid source IP address",
+      })
+      return NextResponse.json(
+        { error: "Forbidden: Invalid source IP" },
+        { status: 403 }
+      )
+    }
+
+    logAudit({
+      event_type: "ip_validation",
+      success: true,
+      client_ip: clientIP || undefined,
+    })
+
     const formData = await req.formData()
     const data: Record<string, string> = {}
 
-    // Convert FormData to object
+    // Convert FormData to object, preserving order for signature validation
     formData.forEach((value, key) => {
       data[key] = value.toString()
     })
 
-    console.log("PayFast IPN received")
+    // Extract key fields early for logging
+    orderId = data.custom_str1
+    paymentId = data.pf_payment_id || data.m_payment_id
 
-    // Validate signature
+    // ============================================================
+    // STEP 2: Signature Validation
+    // ============================================================
     const signature = data.signature
-    delete data.signature
+    const dataWithoutSignature = { ...data }
+    delete dataWithoutSignature.signature
 
     const passphrase = process.env.PAYFAST_PASSPHRASE
-    const generatedSignature = generateSignature(data, passphrase)
+    const generatedSignature = generateSignature(dataWithoutSignature, passphrase)
 
     if (signature !== generatedSignature) {
-      console.error("PayFast IPN: Invalid signature", signature, generatedSignature)
+      logAudit({
+        event_type: "signature_validation",
+        success: false,
+        order_id: orderId,
+        payment_id: paymentId,
+        client_ip: clientIP || undefined,
+        error_message: "Signature mismatch",
+        details: { received: signature?.substring(0, 8) + "...", expected: generatedSignature.substring(0, 8) + "..." },
+      })
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
     }
 
-    // Verify payment status
+    logAudit({
+      event_type: "signature_validation",
+      success: true,
+      order_id: orderId,
+      payment_id: paymentId,
+      client_ip: clientIP || undefined,
+    })
+
+    // ============================================================
+    // STEP 3: Server-to-Server Validation with PayFast (VULN-003)
+    // ============================================================
+    const serverValidation = await validatePayFastIPNWithServer(dataWithoutSignature, passphrase || null)
+    
+    if (!serverValidation.isValid) {
+      logAudit({
+        event_type: "server_validation",
+        success: false,
+        order_id: orderId,
+        payment_id: paymentId,
+        client_ip: clientIP || undefined,
+        error_message: serverValidation.error || "Server validation failed",
+      })
+      return NextResponse.json(
+        { error: "PayFast server validation failed" },
+        { status: 400 }
+      )
+    }
+
+    logAudit({
+      event_type: "server_validation",
+      success: true,
+      order_id: orderId,
+      payment_id: paymentId,
+      client_ip: clientIP || undefined,
+    })
+
+    // ============================================================
+    // STEP 4: Merchant ID Verification
+    // ============================================================
     const paymentStatus = data.payment_status
     const merchantId = data.merchant_id
     const amount = data.amount_gross
     const itemName = data.item_name
-    const orderId = data.custom_str1 // Extract order ID from custom field
-    const paymentId = data.pf_payment_id || data.m_payment_id // PayFast payment ID
 
-    // Verify merchant_id matches
     if (merchantId !== process.env.MERCHANT_ID) {
-      console.error("PayFast IPN: Invalid merchant ID")
+      logAudit({
+        event_type: "error",
+        success: false,
+        order_id: orderId,
+        payment_id: paymentId,
+        client_ip: clientIP || undefined,
+        error_message: "Merchant ID mismatch",
+        details: { received: merchantId, expected: process.env.MERCHANT_ID?.substring(0, 4) + "..." },
+      })
       return NextResponse.json({ error: "Invalid merchant ID" }, { status: 400 })
     }
 
-    // Initialize Supabase client
-    const supabase = await createClient(cookies(), true)
+    // Use admin client for webhook processing
+    const supabase = supabaseAdmin
 
     // Process the payment based on status
     switch (paymentStatus) {
       case "COMPLETE":
         
         if (!orderId) {
-          console.error("PayFast IPN: No order ID provided")
+          logAudit({
+            event_type: "error",
+            success: false,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            error_message: "Order ID missing from IPN",
+          })
           return NextResponse.json({ error: "Order ID missing" }, { status: 400 })
         }
 
-        // Check if order exists
+        // ============================================================
+        // STEP 5: Order Existence Check
+        // ============================================================
         const { data: existingOrder, error: fetchError } = await supabase
           .from("orders")
-          .select("id")
+          .select("id, total_amount, payment_status")
           .eq("id", orderId)
           .single()
 
         if (fetchError || !existingOrder) {
-          console.error("PayFast IPN: Order not found", orderId, fetchError)
+          logAudit({
+            event_type: "error",
+            success: false,
+            order_id: orderId,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            error_message: "Order not found",
+            details: { error: fetchError?.message },
+          })
           return NextResponse.json({ error: "Order not found" }, { status: 404 })
         }
 
-        // Update order payment status
+        // ============================================================
+        // STEP 6: Idempotency Check
+        // ============================================================
+        if (existingOrder.payment_status === "paid" || existingOrder.payment_status === "completed") {
+          logAudit({
+            event_type: "order_update",
+            success: true,
+            order_id: orderId,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            details: { action: "skipped", reason: "already_paid", current_status: existingOrder.payment_status },
+          })
+          return new NextResponse("OK", { status: 200 })
+        }
+
+        // ============================================================
+        // STEP 7: Amount Verification in Cents (VULN-003 Enhanced)
+        // ============================================================
+        const ipnAmountCents = toCents(amount)
+        const orderAmountCents = toCents(existingOrder.total_amount?.toString() || "0")
+
+        // Validate both amounts could be parsed
+        if (ipnAmountCents === null || orderAmountCents === null) {
+          logAudit({
+            event_type: "amount_validation",
+            success: false,
+            order_id: orderId,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            error_message: "Invalid amount format",
+            details: { 
+              ipn_amount: amount, 
+              order_amount: existingOrder.total_amount,
+              ipn_cents: ipnAmountCents,
+              order_cents: orderAmountCents,
+            },
+          })
+          return NextResponse.json({ error: "Invalid amount format" }, { status: 400 })
+        }
+
+        // Use integer comparison for exact match (no floating point issues)
+        if (!amountMatchesInCents(amount, existingOrder.total_amount?.toString() || "0")) {
+          logAudit({
+            event_type: "amount_validation",
+            success: false,
+            order_id: orderId,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            error_message: "Amount mismatch detected - possible payment manipulation attempt",
+            details: { 
+              ipn_amount: amount, 
+              ipn_cents: ipnAmountCents,
+              order_amount: existingOrder.total_amount,
+              order_cents: orderAmountCents,
+              difference_cents: Math.abs(ipnAmountCents - orderAmountCents),
+            },
+          })
+          return NextResponse.json({ error: "Amount mismatch" }, { status: 400 })
+        }
+
+        logAudit({
+          event_type: "amount_validation",
+          success: true,
+          order_id: orderId,
+          payment_id: paymentId,
+          client_ip: clientIP || undefined,
+          details: { amount_cents: ipnAmountCents },
+        })
+
+        // ============================================================
+        // STEP 8: Atomic Update with Optimistic Locking (VULN-003)
+        // ============================================================
+        // Use WHERE clause to ensure we only update if payment_status is still pending
+        // This prevents race conditions where multiple IPNs could process the same order
         const { data: updatedOrder, error: updateError } = await supabase
           .from("orders")
           .update({
@@ -75,18 +287,64 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", orderId)
+          .neq("payment_status", "paid")      // Optimistic lock: only update if not already paid
+          .neq("payment_status", "completed") // Also check for completed status
           .select()
           .single()
 
         if (updateError) {
-          console.error("Error updating order:", updateError)
+          // Check if this is a "no rows returned" error (PGRST116) which means
+          // the optimistic lock failed - order was already updated by another request
+          if (updateError.code === "PGRST116") {
+            logAudit({
+              event_type: "order_update",
+              success: true,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              details: { action: "skipped", reason: "concurrent_update_detected" },
+            })
+            // Return success - the order was already processed
+            return new NextResponse("OK", { status: 200 })
+          }
+          
+          logAudit({
+            event_type: "order_update",
+            success: false,
+            order_id: orderId,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            error_message: "Database update failed",
+            details: { error: updateError.message, code: updateError.code },
+          })
           return NextResponse.json({ error: "Failed to update order" }, { status: 500 })
         }
 
         if (!updatedOrder) {
-          console.error("PayFast IPN: Order update did not affect any rows", orderId)
-          return NextResponse.json({ error: "Order update failed" }, { status: 500 })
+          // No rows affected - likely a race condition where another request already processed this
+          logAudit({
+            event_type: "order_update",
+            success: true,
+            order_id: orderId,
+            payment_id: paymentId,
+            client_ip: clientIP || undefined,
+            details: { action: "skipped", reason: "no_rows_affected_optimistic_lock" },
+          })
+          return new NextResponse("OK", { status: 200 })
         }
+
+        logAudit({
+          event_type: "order_update",
+          success: true,
+          order_id: orderId,
+          payment_id: paymentId,
+          client_ip: clientIP || undefined,
+          details: { 
+            action: "payment_confirmed",
+            new_status: "paid",
+            amount_cents: ipnAmountCents,
+          },
+        })
 
         // Get order items with part and shop information
         const { data: orderItems, error: orderItemsError } = await supabase
@@ -231,12 +489,13 @@ export async function POST(req: NextRequest) {
         }
 
         // Add funds to seller's user wallet escrow (locked_balance) for each shop
+        // Update both wallet and shop balances
         try {
           for (const [shopId, transactionData] of shopTransactionMap.entries()) {
             // Get the shop owner's user_id
             const { data: shop, error: fetchShopError } = await supabase
               .from("shops")
-              .select("user_id, locked_balance")
+              .select("user_id")
               .eq("id", shopId)
               .single()
 
@@ -247,69 +506,71 @@ export async function POST(req: NextRequest) {
 
             const sellerUserId = shop.user_id
 
-            // Get or create seller's wallet
-            let { data: wallet, error: walletError } = await supabase
+            // Update or create user wallet with locked_balance (escrow)
+            const { data: existingWallet, error: walletFetchError } = await supabase
               .from("user_wallets")
               .select("id, locked_balance")
               .eq("user_id", sellerUserId)
               .single()
 
-            if (walletError && walletError.code === "PGRST116") {
-              // Wallet doesn't exist, create one
-              const { data: newWallet, error: createError } = await supabase
-                .from("user_wallets")
-                .insert({ user_id: sellerUserId })
-                .select("id, locked_balance")
-                .single()
-
-              if (createError) {
-                console.error(`Error creating wallet for user ${sellerUserId}:`, createError)
-                continue
-              }
-              wallet = newWallet
-            } else if (walletError) {
-              console.error(`Error fetching wallet for user ${sellerUserId}:`, walletError)
-              continue
+            if (walletFetchError && walletFetchError.code !== "PGRST116") {
+              console.error(`Error fetching wallet for user ${sellerUserId}:`, walletFetchError)
             }
 
-            if (wallet) {
-              const currentLockedBalance = parseFloat(wallet.locked_balance?.toString() || "0")
-              const newLockedBalance = currentLockedBalance + transactionData.sellerAmount
-
-              // Update wallet locked_balance
-              const { error: updateWalletError } = await supabase
+            if (existingWallet) {
+              // Update existing wallet - add to locked_balance (escrow)
+              const { error: walletUpdateError } = await supabase
                 .from("user_wallets")
-                .update({ 
-                  locked_balance: newLockedBalance,
-                  updated_at: new Date().toISOString()
+                .update({
+                  locked_balance: (parseFloat(existingWallet.locked_balance?.toString() || "0") + transactionData.sellerAmount),
+                  updated_at: new Date().toISOString(),
                 })
-                .eq("id", wallet.id)
+                .eq("id", existingWallet.id)
 
-              if (updateWalletError) {
-                console.error(`Error updating wallet locked_balance for user ${sellerUserId}:`, updateWalletError)
+              if (walletUpdateError) {
+                console.error(`Error updating wallet for user ${sellerUserId}:`, walletUpdateError)
               } else {
-                // Create wallet transaction record for escrow hold
-                await supabase
-                  .from("wallet_transactions")
-                  .insert({
-                    wallet_id: wallet.id,
-                    transaction_type: "escrow_hold",
-                    amount: transactionData.sellerAmount,
-                    status: "completed",
-                    reference_id: orderId,
-                    reference_type: "order",
-                    description: `Sale payment held in escrow - Order ${orderId?.slice(0, 8)}`,
-                    balance_after: newLockedBalance
-                  })
+                console.log(`Escrow hold completed for shop ${shopId}, amount: ${transactionData.sellerAmount}`)
               }
+            } else {
+              // Create new wallet with locked_balance
+              const { error: walletCreateError } = await supabase
+                .from("user_wallets")
+                .insert({
+                  user_id: sellerUserId,
+                  available_balance: 0,
+                  locked_balance: transactionData.sellerAmount,
+                })
 
-              // Also update shop locked_balance for backward compatibility
-              const currentShopLockedBalance = parseFloat(shop.locked_balance?.toString() || "0")
+              if (walletCreateError) {
+                console.error(`Error creating wallet for user ${sellerUserId}:`, walletCreateError)
+              } else {
+                console.log(`Created wallet with escrow for shop ${shopId}, amount: ${transactionData.sellerAmount}`)
+              }
+            }
+
+            // Also update shop's locked_balance
+            const { error: shopUpdateError } = await supabase
+              .from("shops")
+              .update({
+                locked_balance: supabase.rpc ? transactionData.sellerAmount : transactionData.sellerAmount,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", shopId)
+
+            // Use raw SQL increment for shop locked_balance
+            const { data: currentShop } = await supabase
+              .from("shops")
+              .select("locked_balance")
+              .eq("id", shopId)
+              .single()
+
+            if (currentShop) {
               await supabase
                 .from("shops")
-                .update({ 
-                  locked_balance: currentShopLockedBalance + transactionData.sellerAmount,
-                  updated_at: new Date().toISOString()
+                .update({
+                  locked_balance: (parseFloat(currentShop.locked_balance?.toString() || "0") + transactionData.sellerAmount),
+                  updated_at: new Date().toISOString(),
                 })
                 .eq("id", shopId)
             }
@@ -349,45 +610,11 @@ export async function POST(req: NextRequest) {
             }
           }
         } catch (error) {
-          console.error("Error updating wallet escrow balance:", error)
+          console.error("Error updating wallet/shop balances:", error)
           // Don't fail the payment notification, just log the error
         }
 
-        // Decrement inventory for each part
-        try {
-          for (const item of orderItems) {
-            // Get current stock quantity
-            const { data: part, error: fetchError } = await supabase
-              .from("parts")
-              .select("stock_quantity")
-              .eq("id", item.part_id)
-              .single()
-
-            if (fetchError) {
-              console.error(`Error fetching part ${item.part_id}:`, fetchError)
-              continue
-            }
-
-            if (part) {
-              const newStockQuantity = Math.max(0, (part.stock_quantity || 0) - item.quantity)
-              
-              const { error: inventoryError } = await supabase
-                .from("parts")
-                .update({
-                  stock_quantity: newStockQuantity,
-                })
-                .eq("id", item.part_id)
-
-              if (inventoryError) {
-                console.error(`Error decrementing inventory for part ${item.part_id}:`, inventoryError)
-                // Continue processing other items even if one fails
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Error decrementing inventory:", error)
-          // Don't fail the payment notification, just log the error
-        }
+        // Stock was already deducted at order creation time, no need to do anything here
 
         break
 
@@ -395,18 +622,25 @@ export async function POST(req: NextRequest) {
         
         if (orderId) {
           // Check if order exists
-          const { data: existingOrder, error: fetchError } = await supabase
+          const { data: failedExistingOrder, error: failedFetchError } = await supabase
             .from("orders")
             .select("id")
             .eq("id", orderId)
             .single()
 
-          if (fetchError || !existingOrder) {
-            console.error("PayFast IPN: Order not found for FAILED status", orderId, fetchError)
+          if (failedFetchError || !failedExistingOrder) {
+            logAudit({
+              event_type: "error",
+              success: false,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              error_message: "Order not found for FAILED status",
+            })
             break
           }
 
-          const { data: updatedOrder, error: updateError } = await supabase
+          const { data: failedUpdatedOrder, error: failedUpdateError } = await supabase
             .from("orders")
             .update({
               payment_status: "failed",
@@ -416,10 +650,73 @@ export async function POST(req: NextRequest) {
             .select()
             .single()
 
-          if (updateError) {
-            console.error("Error updating order status:", updateError)
-          } else if (!updatedOrder) {
-            console.error("PayFast IPN: Order update did not affect any rows", orderId)
+          if (failedUpdateError) {
+            logAudit({
+              event_type: "order_update",
+              success: false,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              error_message: "Failed to update order to failed status",
+              details: { error: failedUpdateError.message },
+            })
+          } else if (failedUpdatedOrder) {
+            logAudit({
+              event_type: "order_update",
+              success: true,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              details: { action: "payment_failed", new_status: "failed" },
+            })
+          }
+
+          // ============================================================
+          // Restore Stock for Failed Payment
+          // ============================================================
+          // Payment failed - restore the stock that was deducted at order creation
+          try {
+            // Get order items to restore stock
+            const { data: failedOrderItems, error: failedItemsError } = await supabase
+              .from("order_items")
+              .select("part_id, quantity")
+              .eq("order_id", orderId)
+
+            if (failedItemsError) {
+              console.error(`Error fetching order items for failed order ${orderId}:`, failedItemsError)
+            } else if (failedOrderItems && failedOrderItems.length > 0) {
+              // Restore stock for each item
+              for (const item of failedOrderItems) {
+                const { data: part } = await supabase
+                  .from("parts")
+                  .select("stock_quantity")
+                  .eq("id", item.part_id)
+                  .single()
+
+                if (part) {
+                  await supabase
+                    .from("parts")
+                    .update({ stock_quantity: part.stock_quantity + item.quantity })
+                    .eq("id", item.part_id)
+                }
+              }
+              console.log(`Stock restored for failed order ${orderId}`)
+              logAudit({
+                event_type: "stock_reservation",
+                success: true,
+                order_id: orderId,
+                payment_id: paymentId,
+                client_ip: clientIP || undefined,
+                details: { 
+                  action: "released",
+                  reason: "payment_failed",
+                  items_count: failedOrderItems.length
+                },
+              })
+            }
+          } catch (error) {
+            console.error("Error restoring stock for failed payment:", error)
+            // The stock restoration failed but we shouldn't fail the IPN
           }
         }
         break
@@ -428,18 +725,25 @@ export async function POST(req: NextRequest) {
         
         if (orderId) {
           // Check if order exists
-          const { data: existingOrder, error: fetchError } = await supabase
+          const { data: pendingExistingOrder, error: pendingFetchError } = await supabase
             .from("orders")
             .select("id")
             .eq("id", orderId)
             .single()
 
-          if (fetchError || !existingOrder) {
-            console.error("PayFast IPN: Order not found for PENDING status", orderId, fetchError)
+          if (pendingFetchError || !pendingExistingOrder) {
+            logAudit({
+              event_type: "error",
+              success: false,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              error_message: "Order not found for PENDING status",
+            })
             break
           }
 
-          const { data: updatedOrder, error: updateError } = await supabase
+          const { data: pendingUpdatedOrder, error: pendingUpdateError } = await supabase
             .from("orders")
             .update({
               payment_status: "pending",
@@ -449,21 +753,52 @@ export async function POST(req: NextRequest) {
             .select()
             .single()
 
-          if (updateError) {
-            console.error("Error updating order status:", updateError)
-          } else if (!updatedOrder) {
-            console.error("PayFast IPN: Order update did not affect any rows", orderId)
+          if (pendingUpdateError) {
+            logAudit({
+              event_type: "order_update",
+              success: false,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              error_message: "Failed to update order to pending status",
+              details: { error: pendingUpdateError.message },
+            })
+          } else if (pendingUpdatedOrder) {
+            logAudit({
+              event_type: "order_update",
+              success: true,
+              order_id: orderId,
+              payment_id: paymentId,
+              client_ip: clientIP || undefined,
+              details: { action: "payment_pending", new_status: "pending" },
+            })
           }
         }
         break
 
       default:
+        logAudit({
+          event_type: "error",
+          success: false,
+          order_id: orderId,
+          payment_id: paymentId,
+          client_ip: clientIP || undefined,
+          error_message: `Unknown payment status: ${paymentStatus}`,
+        })
     }
 
     // PayFast requires a 200 OK response
     return new NextResponse("OK", { status: 200 })
   } catch (error) {
-    console.error("PayFast IPN error:", error)
+    logAudit({
+      event_type: "error",
+      success: false,
+      order_id: orderId,
+      payment_id: paymentId,
+      client_ip: clientIP || undefined,
+      error_message: `IPN processing failed: ${(error as Error).message}`,
+      details: { stack: (error as Error).stack?.substring(0, 500) },
+    })
     return NextResponse.json({ error: "IPN processing failed" }, { status: 500 })
   }
 }

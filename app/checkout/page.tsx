@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Cpu, CreditCard, Truck, Shield, ArrowLeft, Check, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,6 +18,7 @@ import { useCartStore } from "@/lib/cart-store"
 import { MainNavbar } from "@/components/navbar"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/hooks/use-auth"
+import { getCsrfHeaders } from "@/lib/csrf-client"
 
 interface ShippingAddress {
   id: string
@@ -36,6 +38,7 @@ interface ShippingAddress {
 export default function CheckoutPage() {
   const { toast } = useToast()
   const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
   const [isProcessing, setIsProcessing] = useState(false)
   const [isCartLoading, setIsCartLoading] = useState(true)
   const { items, getTotalPrice, getTotalItems, syncCart, isSyncing } = useCartStore()
@@ -145,6 +148,7 @@ export default function CheckoutPage() {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
+            ...getCsrfHeaders(),
           },
           body: JSON.stringify({
             id: selectedAddressId,
@@ -161,6 +165,7 @@ export default function CheckoutPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...getCsrfHeaders(),
           },
           body: JSON.stringify(addressData),
         })
@@ -176,6 +181,18 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Check if user is authenticated
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be signed in to proceed with checkout. Please sign in first.",
+        variant: "destructive",
+      })
+      router.push("/login?redirectTo=/checkout")
+      return
+    }
+
     setIsProcessing(true)
 
     try {
@@ -183,18 +200,21 @@ export default function CheckoutPage() {
       const itemNames = items.map(item => `${item.name} (x${item.quantity})`).join(", ")
       const itemName = itemNames.length > 100 ? `${itemNames.substring(0, 97)}...` : itemNames
 
-      // First, create the order
+      // SECURITY FIX: Only send part_id and quantity - prices are calculated server-side
+      // This prevents client-side price manipulation attacks (VULN-001)
       const orderResponse = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({
+          // Only send part_id and quantity - NO price data
           items: items.map(item => ({
-            part_id: item.id, // item.id is the part_id
+            part_id: item.id,
             quantity: item.quantity,
-            tierPrice: item.tierPrice,
-            price: item.price,
+            // NOTE: tierPrice, price, and all other pricing fields are intentionally NOT sent
+            // The server calculates all prices from the database to prevent manipulation
           })),
           shippingAddress: {
             firstName: formData.firstName,
@@ -207,11 +227,9 @@ export default function CheckoutPage() {
           },
           customerEmail: formData.email,
           customerName: `${formData.firstName} ${formData.lastName}`.trim(),
-          subtotal: totalPrice.toFixed(2),
-          shippingAmount: shippingCost.toFixed(2),
-          taxAmount: "0.00",
-          discountAmount: "0.00",
-          totalAmount: finalTotal.toFixed(2),
+          shippingMethod: shippingMethod, // Server calculates shipping cost based on this
+          // NOTE: subtotal, shippingAmount, taxAmount, discountAmount, totalAmount are NOT sent
+          // All pricing is calculated server-side from database values
         }),
       })
 
@@ -232,24 +250,27 @@ export default function CheckoutPage() {
         await saveShippingAddress()
       }
 
-      // Call API to generate PayFast payment data with orderId
+      // SECURITY FIX: PayFast endpoint now fetches the amount from the order in the database
+      // We only send the orderId - the server retrieves the verified total_amount
       const response = await fetch("/api/payfast/generate-payment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({
-          amount: finalTotal.toFixed(2),
+          orderId: orderId, // Server fetches amount from DB using this
           itemName: itemName || "Order Payment",
           email: formData.email,
           firstName: formData.firstName,
           lastName: formData.lastName,
-          orderId: orderId,
+          // NOTE: amount is NOT sent - server fetches it from the order record
         }),
       })
 
       if (!response.ok) {
-        throw new Error("Failed to generate payment")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to generate payment")
       }
 
       const data = await response.json()

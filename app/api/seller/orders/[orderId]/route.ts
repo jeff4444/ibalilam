@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
+import { supabaseAdmin } from "@/utils/supabase/admin"
 import { cookies } from "next/headers"
 
 export async function PATCH(
@@ -8,6 +9,7 @@ export async function PATCH(
 ) {
   try {
     const { orderId } = await params
+    // Use regular client for auth and read operations
     const supabase = await createClient(cookies())
     
     // Check if user is authenticated
@@ -172,6 +174,8 @@ export async function PATCH(
     }
 
     // If order was marked as delivered, release escrow funds from user wallet
+    // SECURITY FIX (VULN-007): Use atomic function to update both wallet and shop
+    // balances in a single transaction, preventing race conditions and double-spending
     if (status === 'delivered' && existingOrder.status !== 'delivered') {
       try {
         // Get the transaction for this order to find the seller_amount
@@ -186,110 +190,65 @@ export async function PATCH(
         } else if (transaction && transaction.escrow_status === 'held') {
           const sellerAmount = parseFloat(transaction.seller_amount?.toString() || "0")
 
-          // Get seller's wallet
-          const { data: wallet, error: walletError } = await supabase
-            .from("user_wallets")
-            .select("id, locked_balance, available_balance")
-            .eq("user_id", user.id)
-            .single()
-
-          if (walletError) {
-            console.error("Error fetching wallet for escrow release:", walletError)
-          } else if (wallet) {
-            const currentLockedBalance = parseFloat(wallet.locked_balance?.toString() || "0")
-            const currentAvailableBalance = parseFloat(wallet.available_balance?.toString() || "0")
-
-            // Calculate new balances (ensure locked_balance doesn't go negative)
-            const amountToRelease = Math.min(sellerAmount, currentLockedBalance)
-            const newLockedBalance = currentLockedBalance - amountToRelease
-            const newAvailableBalance = currentAvailableBalance + amountToRelease
-
-            // Update wallet balances
-            const { error: walletUpdateError } = await supabase
-              .from("user_wallets")
-              .update({
-                locked_balance: newLockedBalance,
-                available_balance: newAvailableBalance,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", wallet.id)
-
-            if (walletUpdateError) {
-              console.error("Error releasing wallet escrow funds:", walletUpdateError)
-            } else {
-              // Create wallet transaction record for escrow release
-              await supabase
-                .from("wallet_transactions")
-                .insert({
-                  wallet_id: wallet.id,
-                  transaction_type: "escrow_release",
-                  amount: amountToRelease,
-                  status: "completed",
-                  reference_id: orderId,
-                  reference_type: "order",
-                  description: `Escrow released - Order delivered`,
-                  balance_after: newAvailableBalance
-                })
-
-              // Update transaction escrow_status to released
-              await supabase
-                .from("transactions")
-                .update({ escrow_status: "released" })
-                .eq("id", transaction.id)
+          // ATOMIC ESCROW RELEASE: Updates both wallet and shop balances atomically
+          // - Uses FOR UPDATE row locking to prevent race conditions
+          // - Includes idempotency check (won't double-process same order)
+          // - Creates wallet_transaction record automatically
+          // - Syncs shop balance within the same transaction
+          const { data: releaseTxId, error: releaseError } = await supabaseAdmin.rpc(
+            'atomic_escrow_release',
+            {
+              p_seller_user_id: user.id,
+              p_shop_id: shop.id,
+              p_amount: sellerAmount,
+              p_order_id: orderId,
+              p_description: `Escrow released - Order ${orderId.slice(0, 8)} delivered`
             }
+          )
+
+          if (releaseError) {
+            console.error("Error in atomic_escrow_release:", releaseError)
+          } else {
+            console.log(`Escrow release completed, transaction: ${releaseTxId}`)
+            
+            // Update transaction escrow_status to released
+            // SECURITY: Use admin client to bypass RLS - sellers no longer have
+            // direct UPDATE access to transactions table (VULN-006 fix)
+            await supabaseAdmin
+              .from("transactions")
+              .update({ escrow_status: "released" })
+              .eq("id", transaction.id)
           }
 
-          // Also update shop balances for backward compatibility
-          const { data: currentShop, error: fetchShopError } = await supabase
-            .from("shops")
-            .select("locked_balance, available_balance")
-            .eq("id", shop.id)
+          // Update shop_analytics total_sales for historical tracking
+          const today = new Date().toISOString().split("T")[0]
+          const { data: existingAnalytics, error: analyticsError } = await supabase
+            .from("shop_analytics")
+            .select("total_sales")
+            .eq("shop_id", shop.id)
+            .eq("date", today)
             .single()
 
-          if (!fetchShopError && currentShop) {
-            const shopLockedBalance = parseFloat(currentShop.locked_balance?.toString() || "0")
-            const shopAvailableBalance = parseFloat(currentShop.available_balance?.toString() || "0")
-            const shopAmountToRelease = Math.min(sellerAmount, shopLockedBalance)
-
+          if (!analyticsError && existingAnalytics) {
+            const currentTotalSales = parseFloat(existingAnalytics.total_sales?.toString() || "0")
             await supabase
-              .from("shops")
-              .update({
-                locked_balance: shopLockedBalance - shopAmountToRelease,
-                available_balance: shopAvailableBalance + shopAmountToRelease,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", shop.id)
-          }
-
-              // Update shop_analytics total_sales for historical tracking
-              const today = new Date().toISOString().split("T")[0]
-              const { data: existingAnalytics, error: analyticsError } = await supabase
-                .from("shop_analytics")
-                .select("total_sales")
-                .eq("shop_id", shop.id)
-                .eq("date", today)
-                .single()
-
-              if (!analyticsError && existingAnalytics) {
-                const currentTotalSales = parseFloat(existingAnalytics.total_sales?.toString() || "0")
-                await supabase
-                  .from("shop_analytics")
+              .from("shop_analytics")
               .update({ total_sales: currentTotalSales + sellerAmount })
-                  .eq("shop_id", shop.id)
-                  .eq("date", today)
-              } else if (analyticsError?.code === "PGRST116") {
-                // No analytics record for today, create one
-                await supabase
-                  .from("shop_analytics")
-                  .insert({
-                    shop_id: shop.id,
-                    date: today,
+              .eq("shop_id", shop.id)
+              .eq("date", today)
+          } else if (analyticsError?.code === "PGRST116") {
+            // No analytics record for today, create one
+            await supabase
+              .from("shop_analytics")
+              .insert({
+                shop_id: shop.id,
+                date: today,
                 total_sales: sellerAmount,
-                  })
+              })
           }
         }
       } catch (escrowError) {
-        console.error("Error processing escrow release:", escrowError)
+        console.error("Error processing atomic escrow release:", escrowError)
         // Don't fail the order update, just log the error
       }
     }

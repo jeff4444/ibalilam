@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   ArrowUpFromLine,
   RefreshCw,
@@ -117,7 +118,7 @@ export default function AdminWithdrawalsPage() {
       setIsProcessing(true)
       setError(null)
 
-      const response = await fetch('/api/admin/withdrawals', {
+      const response = await fetchWithCsrf('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -151,7 +152,7 @@ export default function AdminWithdrawalsPage() {
       setIsProcessing(true)
       setError(null)
 
-      const response = await fetch('/api/admin/withdrawals', {
+      const response = await fetchWithCsrf('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

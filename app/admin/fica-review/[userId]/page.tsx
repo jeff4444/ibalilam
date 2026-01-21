@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { fetchWithCsrf } from '@/lib/csrf-client'
 import { 
   ArrowLeft,
   CheckCircle,
@@ -101,7 +102,7 @@ export default function FicaDetailPage() {
       setIsProcessing(true)
       setError('')
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,7 +136,7 @@ export default function FicaDetailPage() {
       setIsProcessing(true)
       setError('')
 
-      const response = await fetch('/api/admin/users', {
+      const response = await fetchWithCsrf('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

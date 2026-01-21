@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
+import { auditLog } from '@/lib/audit-logger'
+import { withRateLimit } from '@/lib/rate-limit-middleware'
 
 export async function POST(request: NextRequest) {
   try {
+    // Use regular client for auth and reads
     const supabase = await createClient(cookies())
     
     // Get current user
@@ -12,12 +16,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // INFO-001 FIX: Rate limit withdrawal requests (use api_general as a reasonable limit)
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json()
     const { amount, bankDetails } = body
 
     // Validate amount
     if (!amount || isNaN(amount) || amount <= 0) {
       return NextResponse.json({ error: 'Invalid amount' }, { status: 400 })
+    }
+
+    // Maximum withdrawal amount - prevent overflow (VULN-008 fix)
+    // Max single withdrawal: R100 billion (well below DECIMAL(18,2) limit)
+    const MAX_WITHDRAWAL_AMOUNT = 100000000000 // R100 billion
+    if (amount > MAX_WITHDRAWAL_AMOUNT) {
+      return NextResponse.json({ 
+        error: `Maximum withdrawal amount is R${MAX_WITHDRAWAL_AMOUNT.toLocaleString()}` 
+      }, { status: 400 })
     }
 
     // Get global settings for withdrawal limits
@@ -49,7 +66,7 @@ export async function POST(request: NextRequest) {
     // Get user's wallet
     const { data: wallet, error: walletError } = await supabase
       .from('user_wallets')
-      .select('id, available_balance')
+      .select('id, available_balance, pending_withdrawal_balance')
       .eq('user_id', user.id)
       .single()
 
@@ -58,6 +75,8 @@ export async function POST(request: NextRequest) {
     }
 
     const availableBalance = parseFloat(wallet.available_balance) || 0
+    
+    // Pre-check balance (atomic function will also verify, but this gives better UX)
     if (availableBalance < amount) {
       return NextResponse.json({ 
         error: 'Insufficient balance',
@@ -72,48 +91,58 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .single()
 
-    // Create withdrawal transaction (pending status - balance NOT deducted yet)
-    // Balance will only be deducted when admin approves the withdrawal
-    const { data: transaction, error: txError } = await supabase
-      .from('wallet_transactions')
-      .insert({
-        wallet_id: wallet.id,
-        transaction_type: 'withdrawal',
-        amount: -amount, // Negative for outgoing
-        status: 'pending',
-        reference_type: 'payout',
-        description: `Withdrawal request of R${parseFloat(amount).toFixed(2)}`,
-        balance_after: null, // Will be set when approved
-        metadata: {
-          bankDetails: bankDetails || null,
-          userName: profile?.full_name || null,
-          userEmail: profile?.email || user.email,
-          requestedAmount: amount,
-          availableBalanceAtRequest: availableBalance
-        }
-      })
-      .select()
-      .single()
+    // SECURITY FIX (VULN-009): Use atomic function to request withdrawal
+    // This atomically moves funds from available_balance to pending_withdrawal_balance
+    // preventing double-spending while the withdrawal awaits admin approval
+    const { data: result, error: withdrawalError } = await supabaseAdmin.rpc(
+      'atomic_withdrawal_request',
+      {
+        p_wallet_id: wallet.id,
+        p_amount: amount,
+        p_user_id: user.id,
+        p_bank_details: bankDetails || null,
+        p_user_name: profile?.full_name || null,
+        p_user_email: profile?.email || user.email
+      }
+    )
 
-    if (txError) {
-      console.error('Error creating withdrawal transaction:', txError)
+    if (withdrawalError) {
+      console.error('Error in atomic_withdrawal_request:', withdrawalError)
       return NextResponse.json({ error: 'Failed to process withdrawal' }, { status: 500 })
     }
 
-    // NOTE: Balance is NOT deducted here
-    // Admin will approve/reject the withdrawal request
-    // On approval, balance will be deducted via admin API
+    // The function returns a table with one row
+    const withdrawalResult = Array.isArray(result) ? result[0] : result
+
+    if (!withdrawalResult?.success) {
+      // Atomic function returned failure
+      return NextResponse.json({ 
+        error: withdrawalResult?.error_message || 'Failed to process withdrawal',
+        availableBalance: parseFloat(withdrawalResult?.available_balance) || availableBalance
+      }, { status: 400 })
+    }
+
+    // Withdrawal request successful - funds are now locked in pending_withdrawal_balance
+    // INFO-004 FIX: Log successful withdrawal request
+    await auditLog.wallet.withdrawalRequest(
+      user.id,
+      amount,
+      withdrawalResult.transaction_id,
+      request
+    )
 
     return NextResponse.json({
       success: true,
-      message: 'Withdrawal request submitted successfully. It will be reviewed and processed within 1-3 business days.',
+      message: 'Withdrawal request submitted successfully. Funds have been reserved and will be released within 1-3 business days after approval.',
       transaction: {
-        id: transaction.id,
-        amount: parseFloat(transaction.amount),
-        status: transaction.status,
-        createdAt: transaction.created_at
+        id: withdrawalResult.transaction_id,
+        amount: -amount,
+        status: 'pending',
+        createdAt: new Date().toISOString()
       },
-      currentBalance: availableBalance
+      // Return updated balances
+      availableBalance: parseFloat(withdrawalResult.available_balance) || 0,
+      pendingWithdrawalBalance: parseFloat(withdrawalResult.pending_withdrawal_balance) || 0
     })
   } catch (error) {
     console.error('Error processing withdrawal:', error)

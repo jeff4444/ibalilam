@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
+import { auditLog } from '@/lib/audit-logger'
+import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -29,8 +28,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Build query for withdrawal transactions
-    let query = supabase
+    // Build query for withdrawal transactions using admin client
+    let query = supabaseAdmin
       .from('wallet_transactions')
       .select(`
         id,
@@ -44,7 +43,8 @@ export async function GET(request: NextRequest) {
         user_wallets!inner (
           id,
           user_id,
-          available_balance
+          available_balance,
+          pending_withdrawal_balance
         )
       `, { count: 'exact' })
       .eq('transaction_type', 'withdrawal')
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     // Fetch user profiles
     let userProfiles: Record<string, { full_name: string }> = {}
     if (userIds.length > 0) {
-      const { data: profiles } = await supabase
+      const { data: profiles } = await supabaseAdmin
         .from('user_profiles')
         .select('user_id, full_name, first_name, last_name')
         .in('user_id', userIds)
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get summary stats
-    const { data: pendingStats } = await supabase
+    const { data: pendingStats } = await supabaseAdmin
       .from('wallet_transactions')
       .select('amount')
       .eq('transaction_type', 'withdrawal')
@@ -116,7 +116,8 @@ export async function GET(request: NextRequest) {
             id: userId,
             name: userProfile?.full_name || metadata?.userName || 'Unknown',
             email: metadata?.userEmail || 'No email',
-            availableBalance: parseFloat(userWallet?.available_balance) || 0
+            availableBalance: parseFloat(userWallet?.available_balance) || 0,
+            pendingWithdrawalBalance: parseFloat(userWallet?.pending_withdrawal_balance) || 0
           }
         }
       }) || [],
@@ -139,21 +140,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient(cookies(), true)
-    
-    // Verify admin status
+    // Get user from request cookies (authenticated session)
+    const supabase = await createClient(cookies())
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('is_admin')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.is_admin) {
+    // Check admin status from admins table using admin client
+    const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
+    if (!adminInfo.isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -168,8 +165,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid action. Must be "approve" or "reject"' }, { status: 400 })
     }
 
-    // Get the withdrawal transaction
-    const { data: transaction, error: txError } = await supabase
+    // Get the withdrawal transaction using admin client
+    const { data: transaction, error: txError } = await supabaseAdmin
       .from('wallet_transactions')
       .select(`
         id,
@@ -181,6 +178,7 @@ export async function POST(request: NextRequest) {
           id,
           user_id,
           available_balance,
+          pending_withdrawal_balance,
           total_withdrawn
         )
       `)
@@ -200,68 +198,59 @@ export async function POST(request: NextRequest) {
 
     const wallet = transaction.user_wallets as any
     const withdrawalAmount = Math.abs(parseFloat(transaction.amount as string))
-    const currentBalance = parseFloat(wallet.available_balance) || 0
-    const currentTotalWithdrawn = parseFloat(wallet.total_withdrawn) || 0
 
     if (action === 'approve') {
-      // Check if user still has sufficient balance
-      if (currentBalance < withdrawalAmount) {
+      // SECURITY FIX (VULN-007): Use atomic function to approve withdrawal
+      const { data: approvalResult, error: approvalError } = await supabaseAdmin.rpc(
+        'atomic_withdrawal_approve',
+        {
+          p_wallet_id: wallet.id,
+          p_amount: withdrawalAmount,
+          p_transaction_id: transactionId,
+          p_admin_id: user.id
+        }
+      )
+
+      if (approvalError) {
+        console.error('Error in atomic_withdrawal_approve:', approvalError)
+        return NextResponse.json({ error: 'Failed to approve withdrawal' }, { status: 500 })
+      }
+
+      if (approvalResult === false) {
+        const { data: updatedTx } = await supabaseAdmin
+          .from('wallet_transactions')
+          .select('status, metadata')
+          .eq('id', transactionId)
+          .single()
+
+        if (updatedTx?.status === 'failed') {
+          const metadata = updatedTx.metadata as any
+          return NextResponse.json({ 
+            error: metadata?.failure_reason || 'Insufficient balance',
+            insufficientFunds: true,
+            availableBalance: metadata?.available_balance,
+            requestedAmount: metadata?.requested_amount
+          }, { status: 400 })
+        }
+
         return NextResponse.json({ 
-          error: `Insufficient balance. User has R${currentBalance.toFixed(2)} but withdrawal is R${withdrawalAmount.toFixed(2)}`,
-          insufficientFunds: true,
-          availableBalance: currentBalance,
-          requestedAmount: withdrawalAmount
+          error: 'Withdrawal could not be approved',
         }, { status: 400 })
       }
 
-      // Calculate new balance
-      const newBalance = currentBalance - withdrawalAmount
-      const newTotalWithdrawn = currentTotalWithdrawn + withdrawalAmount
-
-      // Update wallet balance
-      const { error: walletError } = await supabase
+      const { data: updatedWallet } = await supabaseAdmin
         .from('user_wallets')
-        .update({
-          available_balance: newBalance,
-          total_withdrawn: newTotalWithdrawn,
-          updated_at: new Date().toISOString()
-        })
+        .select('available_balance, pending_withdrawal_balance')
         .eq('id', wallet.id)
+        .single()
 
-      if (walletError) {
-        console.error('Error updating wallet balance:', walletError)
-        return NextResponse.json({ error: 'Failed to update wallet balance' }, { status: 500 })
-      }
-
-      // Update transaction status to completed
-      const { error: updateError } = await supabase
-        .from('wallet_transactions')
-        .update({
-          status: 'completed',
-          balance_after: newBalance,
-          metadata: {
-            ...((transaction.metadata as object) || {}),
-            approvedBy: user.id,
-            approvedAt: new Date().toISOString()
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', transactionId)
-
-      if (updateError) {
-        // Try to rollback wallet balance
-        await supabase
-          .from('user_wallets')
-          .update({
-            available_balance: currentBalance,
-            total_withdrawn: currentTotalWithdrawn,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', wallet.id)
-
-        console.error('Error updating transaction:', updateError)
-        return NextResponse.json({ error: 'Failed to approve withdrawal' }, { status: 500 })
-      }
+      await auditLog.wallet.withdrawalApproved(
+        user.id,
+        wallet.user_id,
+        withdrawalAmount,
+        transactionId,
+        request
+      )
 
       return NextResponse.json({
         success: true,
@@ -270,30 +259,40 @@ export async function POST(request: NextRequest) {
           id: transactionId,
           status: 'completed',
           amount: withdrawalAmount,
-          newBalance
+          newBalance: parseFloat(updatedWallet?.available_balance) || 0,
+          newPendingWithdrawalBalance: parseFloat(updatedWallet?.pending_withdrawal_balance) || 0
         }
       })
 
     } else {
-      // Reject the withdrawal - no balance change needed
-      const { error: updateError } = await supabase
-        .from('wallet_transactions')
-        .update({
-          status: 'failed',
-          metadata: {
-            ...((transaction.metadata as object) || {}),
-            rejectedBy: user.id,
-            rejectedAt: new Date().toISOString(),
-            rejectionReason: rejectionReason || 'Rejected by admin'
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', transactionId)
+      const { data: rejectionResult, error: rejectionError } = await supabaseAdmin.rpc(
+        'atomic_withdrawal_reject',
+        {
+          p_transaction_id: transactionId,
+          p_admin_id: user.id,
+          p_rejection_reason: rejectionReason || 'Rejected by admin'
+        }
+      )
 
-      if (updateError) {
-        console.error('Error rejecting withdrawal:', updateError)
+      if (rejectionError) {
+        console.error('Error in atomic_withdrawal_reject:', rejectionError)
         return NextResponse.json({ error: 'Failed to reject withdrawal' }, { status: 500 })
       }
+
+      if (rejectionResult === false) {
+        return NextResponse.json({ 
+          error: 'Withdrawal was already processed',
+        }, { status: 400 })
+      }
+
+      await auditLog.wallet.withdrawalRejected(
+        user.id,
+        wallet.user_id,
+        withdrawalAmount,
+        transactionId,
+        rejectionReason || 'Rejected by admin',
+        request
+      )
 
       return NextResponse.json({
         success: true,
@@ -311,4 +310,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

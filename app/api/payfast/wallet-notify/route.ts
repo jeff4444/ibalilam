@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
-import { createClient } from "@/utils/supabase/server"
-import { cookies } from "next/headers"
+import { supabaseAdmin } from "@/utils/supabase/admin"
+import { validatePayFastSource } from "@/lib/payfast-security"
 
 export async function POST(req: NextRequest) {
   try {
+    // SECURITY FIX (VULN-002/VULN-014): Validate request originates from PayFast IP addresses
+    // This MUST be the first validation step before any processing
+    const { isValid: isValidIP, clientIP } = validatePayFastSource(req)
+    if (!isValidIP) {
+      console.error(`PayFast Wallet IPN: Rejected - Invalid source IP: ${clientIP}`)
+      return NextResponse.json(
+        { error: "Forbidden: Invalid source IP" },
+        { status: 403 }
+      )
+    }
+
     const formData = await req.formData()
     const data: Record<string, string> = {}
 
@@ -13,7 +24,7 @@ export async function POST(req: NextRequest) {
       data[key] = value.toString()
     })
 
-    console.log("PayFast Wallet IPN received")
+    console.log("PayFast Wallet IPN received from IP:", clientIP)
 
     // Validate signature
     const signature = data.signature
@@ -48,8 +59,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid merchant ID" }, { status: 400 })
     }
 
-    // Initialize Supabase client with admin privileges
-    const supabase = await createClient(cookies(), true)
+    // Use admin client for webhook processing
+    const supabase = supabaseAdmin
 
     // Process the payment based on status
     switch (paymentStatus) {
