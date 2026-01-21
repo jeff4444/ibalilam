@@ -61,8 +61,8 @@ const nextConfig = {
               "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in http://127.0.0.1:54321 http://localhost:54321",
               // Fonts: self and data URIs
               "font-src 'self' data:",
-              // Connect: self, Supabase (cloud and local), and PayFast
-              "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co http://127.0.0.1:54321 http://localhost:54321 ws://127.0.0.1:54321 ws://localhost:54321 https://www.payfast.co.za https://sandbox.payfast.co.za",
+              // Connect: self, Supabase (cloud and local), PayFast, and production domains
+              "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co http://127.0.0.1:54321 http://localhost:54321 ws://127.0.0.1:54321 ws://localhost:54321 https://www.payfast.co.za https://sandbox.payfast.co.za https://techafon.com https://ibalilam.vercel.app",
               // Media: self
               "media-src 'self'",
               // Objects: none (no plugins)

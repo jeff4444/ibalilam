@@ -489,7 +489,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Add funds to seller's user wallet escrow (locked_balance) for each shop
-        // Update both wallet and shop balances
+        // SECURITY FIX (VULN-007): Use atomic function to update both wallet and shop
+        // balances in a single transaction, preventing race conditions
         try {
           for (const [shopId, transactionData] of shopTransactionMap.entries()) {
             // Get the shop owner's user_id
@@ -506,73 +507,25 @@ export async function POST(req: NextRequest) {
 
             const sellerUserId = shop.user_id
 
-            // Update or create user wallet with locked_balance (escrow)
-            const { data: existingWallet, error: walletFetchError } = await supabase
-              .from("user_wallets")
-              .select("id, locked_balance")
-              .eq("user_id", sellerUserId)
-              .single()
-
-            if (walletFetchError && walletFetchError.code !== "PGRST116") {
-              console.error(`Error fetching wallet for user ${sellerUserId}:`, walletFetchError)
-            }
-
-            if (existingWallet) {
-              // Update existing wallet - add to locked_balance (escrow)
-              const { error: walletUpdateError } = await supabase
-                .from("user_wallets")
-                .update({
-                  locked_balance: (parseFloat(existingWallet.locked_balance?.toString() || "0") + transactionData.sellerAmount),
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", existingWallet.id)
-
-              if (walletUpdateError) {
-                console.error(`Error updating wallet for user ${sellerUserId}:`, walletUpdateError)
-              } else {
-                console.log(`Escrow hold completed for shop ${shopId}, amount: ${transactionData.sellerAmount}`)
+            // ATOMIC ESCROW HOLD: Updates both wallet and shop balances atomically
+            // - Uses FOR UPDATE row locking to prevent race conditions
+            // - Includes idempotency check (won't double-process same order)
+            // - Creates wallet_transaction record automatically
+            const { data: escrowTxId, error: escrowError } = await supabase.rpc(
+              'atomic_escrow_hold',
+              {
+                p_seller_user_id: sellerUserId,
+                p_shop_id: shopId,
+                p_amount: transactionData.sellerAmount,
+                p_order_id: orderId,
+                p_description: `Sale payment held in escrow - Order ${orderId?.slice(0, 8)}`
               }
+            )
+
+            if (escrowError) {
+              console.error(`Error in atomic_escrow_hold for shop ${shopId}:`, escrowError)
             } else {
-              // Create new wallet with locked_balance
-              const { error: walletCreateError } = await supabase
-                .from("user_wallets")
-                .insert({
-                  user_id: sellerUserId,
-                  available_balance: 0,
-                  locked_balance: transactionData.sellerAmount,
-                })
-
-              if (walletCreateError) {
-                console.error(`Error creating wallet for user ${sellerUserId}:`, walletCreateError)
-              } else {
-                console.log(`Created wallet with escrow for shop ${shopId}, amount: ${transactionData.sellerAmount}`)
-              }
-            }
-
-            // Also update shop's locked_balance
-            const { error: shopUpdateError } = await supabase
-              .from("shops")
-              .update({
-                locked_balance: supabase.rpc ? transactionData.sellerAmount : transactionData.sellerAmount,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", shopId)
-
-            // Use raw SQL increment for shop locked_balance
-            const { data: currentShop } = await supabase
-              .from("shops")
-              .select("locked_balance")
-              .eq("id", shopId)
-              .single()
-
-            if (currentShop) {
-              await supabase
-                .from("shops")
-                .update({
-                  locked_balance: (parseFloat(currentShop.locked_balance?.toString() || "0") + transactionData.sellerAmount),
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", shopId)
+              console.log(`Escrow hold completed for shop ${shopId}, transaction: ${escrowTxId}`)
             }
 
             // Update shop_analytics for order tracking (but not total_sales - that happens on delivery)
@@ -610,7 +563,7 @@ export async function POST(req: NextRequest) {
             }
           }
         } catch (error) {
-          console.error("Error updating wallet/shop balances:", error)
+          console.error("Error in atomic escrow hold:", error)
           // Don't fail the payment notification, just log the error
         }
 
@@ -702,13 +655,13 @@ export async function POST(req: NextRequest) {
               }
               console.log(`Stock restored for failed order ${orderId}`)
               logAudit({
-                event_type: "stock_reservation",
+                event_type: "order_update",
                 success: true,
                 order_id: orderId,
                 payment_id: paymentId,
                 client_ip: clientIP || undefined,
                 details: { 
-                  action: "released",
+                  action: "stock_released",
                   reason: "payment_failed",
                   items_count: failedOrderItems.length
                 },
