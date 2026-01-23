@@ -1,14 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
+    // MED-002 FIX: Validate internal API key for server-to-server calls
+    // This prevents CSRF attacks on the notification endpoint
+    const internalApiKey = request.headers.get('X-Internal-API-Key')
+    const isInternalCall = internalApiKey && internalApiKey === process.env.INTERNAL_API_KEY
+    
     const supabase = await createClient(cookies())
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let user = null
+    
+    if (!isInternalCall) {
+      // If not an internal call, require user authentication
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !authUser) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      user = authUser
     }
 
     const body = await request.json()
@@ -84,8 +95,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Determine recipient
-    const recipientId = chat.buyer_id === user.id ? chat.seller_id : chat.buyer_id
+    // Determine recipient - for internal calls, use the message sender to determine recipient
+    // The recipient is the other party in the chat (not the sender)
+    const senderId = message.sender_id
+    const recipientId = chat.buyer_id === senderId ? chat.seller_id : chat.buyer_id
 
     // Get recipient's email and notification preferences
     const { data: recipient, error: recipientError } = await supabase
@@ -103,8 +116,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Notifications disabled for recipient' })
     }
 
-    // Get recipient's email from auth.users
-    const { data: authUser, error: authUserError } = await supabase.auth.admin.getUserById(recipientId)
+    // Get recipient's email from auth.users using admin client
+    const { data: authUser, error: authUserError } = await supabaseAdmin.auth.admin.getUserById(recipientId)
     
     if (authUserError || !authUser.user?.email) {
       return NextResponse.json({ error: 'Recipient email not found' }, { status: 404 })

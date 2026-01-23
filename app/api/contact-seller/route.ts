@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
+import { withRateLimit } from '@/lib/rate-limit-middleware'
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +17,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // MED-001 FIX: Add rate limiting (use message_send category for contact forms)
+    const rateLimitResponse = await withRateLimit(request, 'message_send', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     // Parse the request body
     const body = await request.json()
@@ -50,8 +56,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get seller's email from auth.users (we'll need to fetch this)
-    const { data: sellerUser, error: sellerUserError } = await supabase.auth.admin.getUserById(shopData.user_id)
+    // Get seller's email from auth.users using admin client
+    const { data: sellerUser, error: sellerUserError } = await supabaseAdmin.auth.admin.getUserById(shopData.user_id)
     
     if (sellerUserError || !sellerUser.user?.email) {
       return NextResponse.json(

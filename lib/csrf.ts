@@ -19,12 +19,12 @@
  *   // In middleware or API route
  *   import { generateCsrfToken, validateCsrfToken, setCsrfCookies } from '@/lib/csrf'
  *   
- *   // Generate and set cookies
+ *   // Generate and set cookies (async)
  *   const token = generateCsrfToken()
- *   setCsrfCookies(response, token)
+ *   await setCsrfCookies(response, token)
  *   
- *   // Validate in API route
- *   const isValid = validateCsrfToken(request)
+ *   // Validate in API route (async)
+ *   const isValid = await validateCsrfToken(request)
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -56,41 +56,113 @@ export function generateCsrfToken(): string {
 }
 
 /**
- * Generate a simple hash for token signing (not cryptographic, just for integrity)
+ * CRIT-001 FIX: Use cryptographically secure HMAC-SHA256 for token signing
+ * Replaces the weak simpleHash function with HMAC to prevent token forgery
  */
-function simpleHash(str: string, secret: string): string {
-  let hash = 0
-  const combined = str + secret
-  for (let i = 0; i < combined.length; i++) {
-    const char = combined.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(36)
+async function signTokenWithHmac(token: string, secret: string): Promise<string> {
+  // Convert secret to ArrayBuffer for Web Crypto API
+  const encoder = new TextEncoder()
+  const keyData = encoder.encode(secret)
+  const tokenData = encoder.encode(token)
+  
+  // Import key for HMAC
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  
+  // Sign the token
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, tokenData)
+  
+  // Convert signature to hex string
+  const signatureArray = Array.from(new Uint8Array(signature))
+  const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  
+  return `${token}.${signatureHex}`
 }
 
 /**
- * Create a signed token (token + signature)
+ * CRIT-001 FIX: Verify token signature using constant-time comparison
  */
-export function signToken(token: string): string {
-  const secret = process.env.CSRF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-csrf-secret'
-  const signature = simpleHash(token, secret)
-  return `${token}.${signature}`
-}
-
-/**
- * Verify a signed token
- */
-export function verifySignedToken(signedToken: string): string | null {
+async function verifySignedTokenWithHmac(signedToken: string, secret: string): Promise<string | null> {
   const parts = signedToken.split('.')
   if (parts.length !== 2) return null
   
   const [token, signature] = parts
-  const secret = process.env.CSRF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'default-csrf-secret'
-  const expectedSignature = simpleHash(token, secret)
   
-  if (signature !== expectedSignature) return null
+  // Recompute expected signature
+  const encoder = new TextEncoder()
+  const keyData = encoder.encode(secret)
+  const tokenData = encoder.encode(token)
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  
+  const expectedSignature = await crypto.subtle.sign('HMAC', cryptoKey, tokenData)
+  const expectedSignatureArray = Array.from(new Uint8Array(expectedSignature))
+  const expectedSignatureHex = expectedSignatureArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  
+  // Use constant-time comparison to prevent timing attacks
+  if (!constantTimeCompare(signature, expectedSignatureHex)) {
+    return null
+  }
+  
   return token
+}
+
+/**
+ * CRIT-002 FIX: Get CSRF secret with validation and secure defaults
+ * Fails hard in production if secret is not configured
+ */
+function getCsrfSecret(): string {
+  const secret = process.env.CSRF_SECRET
+  
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'CRITICAL: CSRF_SECRET environment variable is required in production. ' +
+        'Set a strong random secret (minimum 32 characters).'
+      )
+    }
+    // Only allow fallback in development
+    console.warn('WARNING: Using default CSRF secret in development. Set CSRF_SECRET for production.')
+    return 'development-csrf-secret-only'
+  }
+  
+  if (secret.length < 32) {
+    throw new Error('CSRF_SECRET must be at least 32 characters long')
+  }
+  
+  return secret
+}
+
+/**
+ * CRIT-001 FIX: Create a signed token using HMAC-SHA256
+ */
+export async function signToken(token: string): Promise<string> {
+  const secret = getCsrfSecret()
+  return signTokenWithHmac(token, secret)
+}
+
+/**
+ * CRIT-001 FIX: Verify a signed token using HMAC-SHA256
+ */
+export async function verifySignedToken(signedToken: string): Promise<string | null> {
+  try {
+    const secret = getCsrfSecret()
+    return verifySignedTokenWithHmac(signedToken, secret)
+  } catch (error) {
+    // If secret validation fails, reject the token
+    return null
+  }
 }
 
 // ============================================================
@@ -100,9 +172,9 @@ export function verifySignedToken(signedToken: string): string | null {
 /**
  * Set CSRF cookies on a response
  */
-export function setCsrfCookies(response: NextResponse, token?: string): string {
+export async function setCsrfCookies(response: NextResponse, token?: string): Promise<string> {
   const csrfToken = token || generateCsrfToken()
-  const signedToken = signToken(csrfToken)
+  const signedToken = await signToken(csrfToken)
   
   // HttpOnly cookie - server-side validation
   response.cookies.set(CSRF_COOKIE_NAME, signedToken, {
@@ -133,7 +205,7 @@ export async function getCsrfTokenFromCookies(): Promise<string | null> {
   const signedToken = cookieStore.get(CSRF_COOKIE_NAME)?.value
   
   if (!signedToken) return null
-  return verifySignedToken(signedToken)
+  return await verifySignedToken(signedToken)
 }
 
 // ============================================================
@@ -144,7 +216,7 @@ export async function getCsrfTokenFromCookies(): Promise<string | null> {
  * Validate CSRF token from request
  * Returns true if valid, false otherwise
  */
-export function validateCsrfToken(request: NextRequest): boolean {
+export async function validateCsrfToken(request: NextRequest): Promise<boolean> {
   // Get token from header
   const headerToken = request.headers.get(CSRF_HEADER_NAME)
   if (!headerToken) {
@@ -158,7 +230,7 @@ export function validateCsrfToken(request: NextRequest): boolean {
   }
   
   // Verify and extract the token from the signed cookie
-  const cookieToken = verifySignedToken(signedCookieToken)
+  const cookieToken = await verifySignedToken(signedCookieToken)
   if (!cookieToken) {
     return false
   }
@@ -231,7 +303,7 @@ export function createCsrfErrorResponse(): NextResponse {
  * Validate CSRF token in an API route
  * Returns an error response if validation fails, null if valid
  */
-export function withCsrfValidation(request: NextRequest): NextResponse | null {
+export async function withCsrfValidation(request: NextRequest): Promise<NextResponse | null> {
   // Skip validation for safe methods
   if (!requiresCsrfValidation(request.method)) {
     return null
@@ -243,7 +315,7 @@ export function withCsrfValidation(request: NextRequest): NextResponse | null {
   }
   
   // Validate token
-  if (!validateCsrfToken(request)) {
+  if (!(await validateCsrfToken(request))) {
     return createCsrfErrorResponse()
   }
   

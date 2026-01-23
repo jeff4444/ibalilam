@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import { verifyAdmin } from '@/lib/auth-utils'
+import { withRateLimit } from '@/lib/rate-limit-middleware'
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     // Check if user is admin or requesting their own documents
     if (userId !== user.id) {
       // Check admin status from admins table (secure - can only be modified via service_role)
-      const adminInfo = await verifyAdmin(supabase, user.id)
+      const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
       if (!adminInfo.isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
@@ -57,6 +58,10 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting (use file_upload category for document uploads)
+    const rateLimitResponse = await withRateLimit(request, 'file_upload', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     const { documentType, fileUrl, fileName, fileSize, mimeType } = await request.json()
 
@@ -103,6 +108,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
+
     const { searchParams } = new URL(request.url)
     const documentId = searchParams.get('id')
 
@@ -124,7 +133,7 @@ export async function DELETE(request: NextRequest) {
     // Check if user owns the document or is admin
     if (document.user_id !== user.id) {
       // Check admin status from admins table (secure - can only be modified via service_role)
-      const adminInfo = await verifyAdmin(supabase, user.id)
+      const adminInfo = await verifyAdmin(supabaseAdmin, user.id)
       if (!adminInfo.isAdmin) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
@@ -177,6 +186,10 @@ export async function PUT(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     const { action } = await request.json()
 

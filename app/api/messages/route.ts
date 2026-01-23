@@ -204,11 +204,17 @@ export async function POST(request: NextRequest) {
     // VULN-023 FIX: Standardize on NEXT_PUBLIC_APP_URL with fallbacks
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || ''
     
+    // MED-002 FIX: Include internal API key for server-to-server notification calls
+    const internalHeaders = {
+      'Content-Type': 'application/json',
+      'X-Internal-API-Key': process.env.INTERNAL_API_KEY || ''
+    }
+    
     try {
       // Send email notification
       fetch(`${appUrl}/api/notifications/email`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders,
         body: JSON.stringify({
           chatId: chat.id,
           messageId: newMessage.id,
@@ -219,7 +225,7 @@ export async function POST(request: NextRequest) {
       // Send push notification
       fetch(`${appUrl}/api/notifications/push`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders,
         body: JSON.stringify({
           chatId: chat.id,
           messageId: newMessage.id,

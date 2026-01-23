@@ -10,6 +10,7 @@ export function cn(...inputs: ClassValue[]) {
  * Removes/escapes characters that could break filter syntax.
  * 
  * SECURITY FIX: VULN-010 - Prevents SQL injection via search parameters
+ * MED-003 FIX: Added strictMode for maximum safety in high-security contexts
  * 
  * PostgREST filter special chars that are stripped: . , ( ) " ' \ % _ *
  * These characters can break out of the intended filter context and allow
@@ -19,13 +20,15 @@ export function cn(...inputs: ClassValue[]) {
  * @param options - Configuration options
  * @param options.maxLength - Maximum allowed length (default: 100)
  * @param options.allowWildcards - Whether to allow SQL wildcards % _ * (default: false)
+ * @param options.strictMode - Only allow alphanumeric, spaces, hyphens, underscores (default: false)
  * @returns Sanitized string safe for use in PostgREST filters
  */
 export function sanitizeSearchInput(input: string | null | undefined, options?: {
   maxLength?: number;
   allowWildcards?: boolean;
+  strictMode?: boolean;
 }): string {
-  const { maxLength = 100, allowWildcards = false } = options || {};
+  const { maxLength = 100, allowWildcards = false, strictMode = false } = options || {};
   
   if (!input || typeof input !== 'string') {
     return '';
@@ -50,6 +53,12 @@ export function sanitizeSearchInput(input: string | null | undefined, options?: 
   // * is sometimes used as wildcard
   if (!allowWildcards) {
     sanitized = sanitized.replace(/[%_*]/g, '');
+  }
+  
+  // MED-003 FIX: Strict mode for maximum safety - only allow alphanumeric, spaces, hyphens, underscores
+  // This provides defense-in-depth against any potential PostgREST filter injection
+  if (strictMode) {
+    sanitized = sanitized.replace(/[^a-zA-Z0-9\s\-_]/g, '');
   }
   
   // Enforce maximum length to prevent DoS via extremely long inputs

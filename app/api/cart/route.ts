@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { withRateLimit } from '@/lib/rate-limit-middleware'
 
 // GET - Fetch user's cart items
 export async function GET(request: NextRequest) {
@@ -12,6 +13,10 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     // Fetch cart items with part details
     const { data: cartItems, error } = await supabase
@@ -85,6 +90,10 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()
     const { partId, quantity, tierPrice, tierName } = body
@@ -174,6 +183,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
+
     const body = await request.json()
     const { partId, quantity, tierPrice, tierName } = body
 
@@ -234,6 +247,10 @@ export async function DELETE(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     const { searchParams } = new URL(request.url)
     const partId = searchParams.get('partId')

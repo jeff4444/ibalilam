@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
+import { withRateLimit } from '@/lib/rate-limit-middleware'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +15,10 @@ export async function POST(request: NextRequest) {
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting
+    const rateLimitResponse = await withRateLimit(request, 'api_general', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     const body = await request.json()
     const { amount } = body

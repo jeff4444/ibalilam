@@ -153,7 +153,8 @@ async function fetchParts(supabase: ReturnType<typeof createClient>, filters: Pa
 
   // Apply filters - only use columns that exist in the schema
   // SECURITY FIX: VULN-010 - Sanitize search input to prevent SQL injection
-  const sanitizedSearch = sanitizeSearchInput(filters.search)
+  // MED-003 FIX: Use strictMode for maximum safety against PostgREST filter injection
+  const sanitizedSearch = sanitizeSearchInput(filters.search, { strictMode: true })
   if (sanitizedSearch) {
     // Search in name, description, and search_keywords (which contains brand, model, etc.)
     query = query.or(`name.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`)
@@ -175,8 +176,9 @@ async function fetchParts(supabase: ReturnType<typeof createClient>, filters: Pa
     query = query.lte('price', filters.priceRange.max)
   }
   // Location filter - filter by location_city column
+  // MED-003 FIX: Use strictMode for location filter as well
   if (filters.location) {
-    const sanitizedLocation = sanitizeSearchInput(filters.location)
+    const sanitizedLocation = sanitizeSearchInput(filters.location, { strictMode: true })
     if (sanitizedLocation) {
       query = query.ilike('location_city', `%${sanitizedLocation}%`)
     }

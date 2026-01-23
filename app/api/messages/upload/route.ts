@@ -6,6 +6,7 @@ import {
   generateSecureFilename,
   ALLOWED_IMAGE_MIME_TYPES 
 } from '@/lib/file-security'
+import { withRateLimit } from '@/lib/rate-limit-middleware'
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +16,10 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // MED-001 FIX: Add rate limiting (use file_upload category)
+    const rateLimitResponse = await withRateLimit(request, 'file_upload', user.id)
+    if (rateLimitResponse) return rateLimitResponse
 
     const formData = await request.formData()
     const file = formData.get('file') as File
