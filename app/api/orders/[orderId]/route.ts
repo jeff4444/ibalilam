@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 export async function GET(
   request: NextRequest,
@@ -71,7 +72,7 @@ export async function GET(
       if (orderError.code === "PGRST116") {
         return NextResponse.json({ error: "Order not found" }, { status: 404 })
       }
-      console.error("Error fetching order:", orderError)
+      logger.error("Error fetching order:", orderError)
       return NextResponse.json(
         { error: "Failed to fetch order" },
         { status: 500 }
@@ -84,7 +85,7 @@ export async function GET(
 
     return NextResponse.json({ order })
   } catch (error) {
-    console.error("Error in GET /api/orders/[orderId]:", error)
+    logger.error("Error in GET /api/orders/[orderId]:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -145,7 +146,7 @@ export async function PATCH(
       .eq("customer_id", user.id)
 
     if (updateError) {
-      console.error("Error cancelling order:", updateError)
+      logger.error("Error cancelling order:", updateError)
       return NextResponse.json(
         { error: "Failed to cancel order" },
         { status: 500 }
@@ -157,7 +158,7 @@ export async function PATCH(
       order: { ...existingOrder, status: "cancelled" }
     })
   } catch (error) {
-    console.error("Error in PATCH /api/orders/[orderId]:", error)
+    logger.error("Error in PATCH /api/orders/[orderId]:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -179,7 +180,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log(orderId, user.id)
+    logger.debug('Order deletion request:', { orderId, userId: user.id })
 
     // Fetch order to verify ownership and status
     const { data: existingOrder, error: orderError } = await supabase
@@ -208,7 +209,7 @@ export async function DELETE(
       .eq("order_id", orderId)
 
     if (deleteItemsError) {
-      console.error("Error deleting order items:", deleteItemsError)
+      logger.error("Error deleting order items:", deleteItemsError)
       return NextResponse.json(
         { error: "Failed to delete order items" },
         { status: 500 }
@@ -223,7 +224,7 @@ export async function DELETE(
       .eq("customer_id", user.id)
 
     if (deleteOrderError) {
-      console.error("Error deleting order:", deleteOrderError)
+      logger.error("Error deleting order:", deleteOrderError)
       return NextResponse.json(
         { error: "Failed to delete order" },
         { status: 500 }
@@ -234,7 +235,7 @@ export async function DELETE(
       message: "Order deleted successfully"
     })
   } catch (error) {
-    console.error("Error in DELETE /api/orders/[orderId]:", error)
+    logger.error("Error in DELETE /api/orders/[orderId]:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

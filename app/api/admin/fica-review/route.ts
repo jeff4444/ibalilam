@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       .eq('user_id', targetUserId)
 
     if (updateError) {
-      console.error('Error updating FICA status:', updateError)
+      logger.error('Error updating FICA status:', updateError)
       return NextResponse.json({ error: 'Failed to update FICA status' }, { status: 500 })
     }
 
@@ -73,13 +74,13 @@ export async function POST(request: NextRequest) {
       })
 
     if (logError) {
-      console.error('Error logging FICA action:', logError)
+      logger.error('Error logging FICA action:', logError)
       // Don't fail the request if logging fails
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in FICA review API:', error)
+    logger.error('Error in FICA review API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      console.error('Error fetching FICA reviews:', error)
+      logger.error('Error fetching FICA reviews:', error)
       return NextResponse.json({ error: 'Failed to fetch reviews' }, { status: 500 })
     }
 
@@ -134,7 +135,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: transformedData })
   } catch (error) {
-    console.error('Error in FICA review GET API:', error)
+    logger.error('Error in FICA review GET API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

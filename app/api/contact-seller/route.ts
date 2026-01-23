@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import { withRateLimit } from '@/lib/rate-limit-middleware'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,12 +105,13 @@ The Techafon Team
     `.trim()
 
     // For now, we'll log the email (in production, you'd use a service like SendGrid, Resend, etc.)
-    console.log('=== EMAIL TO BE SENT ===')
-    console.log('To:', sellerUser.user.email)
-    console.log('Reply-To:', user.email)
-    console.log('Subject:', emailSubject)
-    console.log('Body:', emailBody)
-    console.log('========================')
+    // LOW-001 FIX: Use debug logging for email details (only in development)
+    logger.debug('Email to be sent:', {
+      to: sellerUser.user.email,
+      replyTo: user.email,
+      subject: emailSubject
+    })
+    logger.debug('Email body:', emailBody)
 
     // TODO: Replace with actual email service
     // Example with Resend:
@@ -128,7 +130,7 @@ The Techafon Team
     })
 
   } catch (error) {
-    console.error('Error sending email:', error)
+    logger.error('Error sending email:', error)
     return NextResponse.json(
       { error: 'Failed to send email' },
       { status: 500 }

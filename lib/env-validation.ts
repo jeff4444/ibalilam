@@ -7,6 +7,8 @@
  * VULN-023 FIX: Standardizes URL environment variables with fallback support
  */
 
+import { logger } from '@/lib/logger'
+
 // Type definitions for environment configuration
 export interface EnvConfig {
   // Supabase configuration (required)
@@ -84,7 +86,7 @@ function getAppUrl(): string {
       return 'http://localhost:3000'
     }
     
-    console.warn(
+    logger.warn(
       'Warning: No application URL configured. ' +
       'Set NEXT_PUBLIC_APP_URL in your environment variables.'
     )

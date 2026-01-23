@@ -9,6 +9,7 @@ import {
   createAuditLogEntry,
   type PayFastAuditLogEntry
 } from "@/lib/payfast-security"
+import { logger } from "@/lib/logger"
 
 /**
  * PayFast IPN (Instant Payment Notification) Handler
@@ -30,7 +31,7 @@ function logAudit(entry: Omit<PayFastAuditLogEntry, "timestamp">) {
     ...entry,
     timestamp: new Date().toISOString(),
   })
-  console.log(`[PAYFAST_AUDIT] ${logEntry}`)
+  logger.audit(`PAYFAST ${logEntry}`)
 }
 
 export async function POST(req: NextRequest) {
@@ -364,7 +365,7 @@ export async function POST(req: NextRequest) {
           .eq("order_id", orderId)
 
         if (orderItemsError || !orderItems) {
-          console.error("Error fetching order items:", orderItemsError)
+          logger.error("Error fetching order items:", orderItemsError)
           return NextResponse.json({ error: "Failed to fetch order items" }, { status: 500 })
         }
 
@@ -387,7 +388,7 @@ export async function POST(req: NextRequest) {
           .eq("is_active", true)
 
         if (commissionsError) {
-          console.error("Error fetching commissions:", commissionsError)
+          logger.error("Error fetching commissions:", commissionsError)
         }
 
         const commissionsMap = new Map(
@@ -404,7 +405,7 @@ export async function POST(req: NextRequest) {
           .in("setting_key", ["vat_percentage", "payfast_fee_percentage"])
 
         if (feeSettingsError) {
-          console.error("Error fetching fee settings:", feeSettingsError)
+          logger.error("Error fetching fee settings:", feeSettingsError)
         }
 
         // Fetch feature flags for enabling/disabling fees
@@ -414,7 +415,7 @@ export async function POST(req: NextRequest) {
           .in("flag_name", ["enable_vat_fees", "enable_payfast_fees"])
 
         if (feeFlagsError) {
-          console.error("Error fetching fee flags:", feeFlagsError)
+          logger.error("Error fetching fee flags:", feeFlagsError)
         }
 
         // Parse fee settings with defaults
@@ -448,7 +449,7 @@ export async function POST(req: NextRequest) {
           const totalFees = vatAmount + payfastAmount + commissionAmount
           const sellerAmount = shopTotal - totalFees
 
-          console.log(`Order ${orderId} - Shop ${shopId} fee breakdown:`, {
+          logger.debug(`Order ${orderId} - Shop ${shopId} fee breakdown:`, {
             shopTotal,
             vatAmount: enableVatFees ? vatAmount : 'disabled',
             payfastAmount: enablePayfastFees ? payfastAmount : 'disabled',
@@ -483,7 +484,7 @@ export async function POST(req: NextRequest) {
             .insert(transactions)
 
           if (transactionsError) {
-            console.error("Error creating transactions:", transactionsError)
+            logger.error("Error creating transactions:", transactionsError)
             return NextResponse.json({ error: "Failed to create transactions" }, { status: 500 })
           }
         }
@@ -501,7 +502,7 @@ export async function POST(req: NextRequest) {
               .single()
 
             if (fetchShopError || !shop) {
-              console.error(`Error fetching shop ${shopId}:`, fetchShopError)
+              logger.error(`Error fetching shop ${shopId}:`, fetchShopError)
               continue
             }
 
@@ -523,9 +524,9 @@ export async function POST(req: NextRequest) {
             )
 
             if (escrowError) {
-              console.error(`Error in atomic_escrow_hold for shop ${shopId}:`, escrowError)
+              logger.error(`Error in atomic_escrow_hold for shop ${shopId}:`, escrowError)
             } else {
-              console.log(`Escrow hold completed for shop ${shopId}, transaction: ${escrowTxId}`)
+              logger.debug(`Escrow hold completed for shop ${shopId}, transaction: ${escrowTxId}`)
             }
 
             // Update shop_analytics for order tracking (but not total_sales - that happens on delivery)
@@ -538,7 +539,7 @@ export async function POST(req: NextRequest) {
               .single()
 
             if (fetchError && fetchError.code !== "PGRST116") {
-              console.error(`Error fetching shop_analytics for shop ${shopId}:`, fetchError)
+              logger.error(`Error fetching shop_analytics for shop ${shopId}:`, fetchError)
               continue
             }
 
@@ -563,7 +564,7 @@ export async function POST(req: NextRequest) {
             }
           }
         } catch (error) {
-          console.error("Error in atomic escrow hold:", error)
+          logger.error("Error in atomic escrow hold:", error)
           // Don't fail the payment notification, just log the error
         }
 
@@ -579,7 +580,7 @@ export async function POST(req: NextRequest) {
             .eq("order_id", orderId)
 
           if (completeItemsError) {
-            console.error(`Error fetching order items for completed order ${orderId}:`, completeItemsError)
+            logger.error(`Error fetching order items for completed order ${orderId}:`, completeItemsError)
           } else if (completeOrderItems && completeOrderItems.length > 0) {
             // Decrement stock for each item using atomic RPC function
             // This uses FOR UPDATE row-level locking to prevent race conditions
@@ -594,21 +595,21 @@ export async function POST(req: NextRequest) {
                 )
 
                 if (rpcError) {
-                  console.error(`RPC error decrementing stock for part ${item.part_id}:`, rpcError)
+                  logger.error(`RPC error decrementing stock for part ${item.part_id}:`, rpcError)
                   continue
                 }
 
                 if (result && result.length > 0) {
                   const { success, previous_stock, new_stock, error_message } = result[0]
                   if (success) {
-                    console.log(`Stock decremented for part ${item.part_id}: ${previous_stock} -> ${new_stock} (decremented ${item.quantity})`)
+                    logger.debug(`Stock decremented for part ${item.part_id}: ${previous_stock} -> ${new_stock} (decremented ${item.quantity})`)
                   } else {
-                    console.error(`Failed to decrement stock for part ${item.part_id}: ${error_message}`)
+                    logger.error(`Failed to decrement stock for part ${item.part_id}: ${error_message}`)
                     // Log for manual review - stock may need adjustment
                   }
                 }
               } catch (error) {
-                console.error(`Unexpected error decrementing stock for part ${item.part_id}:`, error)
+                logger.error(`Unexpected error decrementing stock for part ${item.part_id}:`, error)
               }
             }
             
@@ -626,7 +627,7 @@ export async function POST(req: NextRequest) {
             })
           }
         } catch (error) {
-          console.error("Error decrementing stock for completed payment:", error)
+          logger.error("Error decrementing stock for completed payment:", error)
           // Log error but don't fail the IPN - stock can be manually adjusted if needed
         }
 

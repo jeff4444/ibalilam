@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
       .order('last_message_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching chats:', error)
+      logger.error('Error fetching chats:', error)
       return NextResponse.json({ error: 'Failed to fetch chats' }, { status: 500 })
     }
 
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ chats: transformedChats })
   } catch (error) {
-    console.error('Error in GET /api/messages:', error)
+    logger.error('Error in GET /api/messages:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
     const shop = Array.isArray(part.shops) ? part.shops[0] : part.shops
     const sellerId = shop?.user_id
     if (!sellerId) {
-      console.error('Seller not found for part:', partId, sellerId)
+      logger.error('Seller not found for part:', partId)
       return NextResponse.json({ error: 'Seller not found' }, { status: 404 })
     }
 
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (chatError && chatError.code !== 'PGRST116') {
-      console.error('Error finding chat:', chatError)
+      logger.error('Error finding chat:', chatError)
       return NextResponse.json({ error: 'Failed to find chat' }, { status: 500 })
     }
 
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (createChatError) {
-        console.error('Error creating chat:', createChatError)
+        logger.error('Error creating chat:', createChatError)
         return NextResponse.json({ error: 'Failed to create chat' }, { status: 500 })
       }
 
@@ -196,7 +197,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (messageError) {
-      console.error('Error creating message:', messageError)
+      logger.error('Error creating message:', messageError)
       return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
     }
 
@@ -220,7 +221,7 @@ export async function POST(request: NextRequest) {
           messageId: newMessage.id,
           type: 'new_message'
         })
-      }).catch(err => console.error('Email notification error:', err))
+      }).catch(err => logger.error('Email notification error:', err))
 
       // Send push notification
       fetch(`${appUrl}/api/notifications/push`, {
@@ -231,14 +232,14 @@ export async function POST(request: NextRequest) {
           messageId: newMessage.id,
           type: 'new_message'
         })
-      }).catch(err => console.error('Push notification error:', err))
+      }).catch(err => logger.error('Push notification error:', err))
     } catch (error) {
-      console.error('Notification trigger error:', error)
+      logger.error('Notification trigger error:', error)
     }
 
     return NextResponse.json({ message: newMessage, chatId: chat.id })
   } catch (error) {
-    console.error('Error in POST /api/messages:', error)
+    logger.error('Error in POST /api/messages:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

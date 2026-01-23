@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/utils/supabase/admin"
+import { logger } from "@/lib/logger"
 
 // Cron endpoint to cleanup expired stock reservations
 // 
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
       vercelCronHeader === "1"
     
     if (!isAuthorized) {
-      console.warn("[CRON] Unauthorized cleanup attempt")
+      logger.warn("[CRON] Unauthorized cleanup attempt")
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
     )
 
     if (cleanupError) {
-      console.error("[CRON] Cleanup function error:", cleanupError)
+      logger.error("[CRON] Cleanup function error:", cleanupError)
       return NextResponse.json(
         { 
           success: false,
@@ -103,14 +104,14 @@ export async function GET(req: NextRequest) {
         ? `[CRON] Cleanup completed: ${result.orders_processed} orders, ${result.reservations_released} reservations released in ${duration}ms`
         : `[CRON] Cleanup completed: No expired reservations found (${duration}ms)`
       
-      console.log(logMessage)
+      logger.info(logMessage)
       
       // Log any failed orders for investigation
       if (result.failed_orders && result.failed_orders.length > 0) {
-        console.warn(`[CRON] Failed to process orders: ${result.failed_orders.join(", ")}`)
+        logger.warn(`[CRON] Failed to process orders: ${result.failed_orders.join(", ")}`)
       }
     } else {
-      console.error("[CRON] Cleanup returned failure:", result)
+      logger.error("[CRON] Cleanup returned failure:", result)
     }
 
     return NextResponse.json({
@@ -124,7 +125,7 @@ export async function GET(req: NextRequest) {
 
   } catch (error) {
     const duration = Date.now() - startTime
-    console.error("[CRON] Unexpected error during cleanup:", error)
+    logger.error("[CRON] Unexpected error during cleanup:", error)
     
     return NextResponse.json(
       { 

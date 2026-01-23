@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { supabaseAdmin } from "@/utils/supabase/admin"
 import { validatePayFastSource } from "@/lib/payfast-security"
+import { logger } from "@/lib/logger"
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
     // This MUST be the first validation step before any processing
     const { isValid: isValidIP, clientIP } = validatePayFastSource(req)
     if (!isValidIP) {
-      console.error(`PayFast Wallet IPN: Rejected - Invalid source IP: ${clientIP}`)
+      logger.error(`PayFast Wallet IPN: Rejected - Invalid source IP: ${clientIP}`)
       return NextResponse.json(
         { error: "Forbidden: Invalid source IP" },
         { status: 403 }
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
       data[key] = value.toString()
     })
 
-    console.log("PayFast Wallet IPN received from IP:", clientIP)
+    logger.debug("PayFast Wallet IPN received from IP:", clientIP)
 
     // Validate signature
     const signature = data.signature
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
     const generatedSignature = generateSignature(data, passphrase)
 
     if (signature !== generatedSignature) {
-      console.error("PayFast Wallet IPN: Invalid signature")
+      logger.error("PayFast Wallet IPN: Invalid signature")
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
     }
 
@@ -49,13 +50,13 @@ export async function POST(req: NextRequest) {
 
     // Verify this is a wallet deposit
     if (transactionType !== 'wallet_deposit') {
-      console.error("PayFast Wallet IPN: Not a wallet deposit transaction")
+      logger.error("PayFast Wallet IPN: Not a wallet deposit transaction")
       return NextResponse.json({ error: "Invalid transaction type" }, { status: 400 })
     }
 
     // Verify merchant_id matches
     if (merchantId !== process.env.MERCHANT_ID) {
-      console.error("PayFast Wallet IPN: Invalid merchant ID")
+      logger.error("PayFast Wallet IPN: Invalid merchant ID")
       return NextResponse.json({ error: "Invalid merchant ID" }, { status: 400 })
     }
 
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
     switch (paymentStatus) {
       case "COMPLETE":
         if (!userId || !transactionId) {
-          console.error("PayFast Wallet IPN: Missing user ID or transaction ID")
+          logger.error("PayFast Wallet IPN: Missing user ID or transaction ID")
           return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
         }
 
@@ -78,13 +79,13 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (fetchTxError || !pendingTx) {
-          console.error("PayFast Wallet IPN: Transaction not found", transactionId)
+          logger.error("PayFast Wallet IPN: Transaction not found", transactionId)
           return NextResponse.json({ error: "Transaction not found" }, { status: 404 })
         }
 
         // Check if already processed
         if (pendingTx.status === 'completed') {
-          console.log("PayFast Wallet IPN: Transaction already processed")
+          logger.debug("PayFast Wallet IPN: Transaction already processed")
           return new NextResponse("OK", { status: 200 })
         }
 
@@ -96,13 +97,13 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (walletError || !wallet) {
-          console.error("PayFast Wallet IPN: Wallet not found")
+          logger.error("PayFast Wallet IPN: Wallet not found")
           return NextResponse.json({ error: "Wallet not found" }, { status: 404 })
         }
 
         // Verify user ID matches
         if (wallet.user_id !== userId) {
-          console.error("PayFast Wallet IPN: User ID mismatch")
+          logger.error("PayFast Wallet IPN: User ID mismatch")
           return NextResponse.json({ error: "User mismatch" }, { status: 400 })
         }
 
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
           .eq("id", wallet.id)
 
         if (updateWalletError) {
-          console.error("PayFast Wallet IPN: Failed to update wallet", updateWalletError)
+          logger.error("PayFast Wallet IPN: Failed to update wallet", updateWalletError)
           return NextResponse.json({ error: "Failed to update wallet" }, { status: 500 })
         }
 
@@ -139,11 +140,11 @@ export async function POST(req: NextRequest) {
           .eq("id", transactionId)
 
         if (updateTxError) {
-          console.error("PayFast Wallet IPN: Failed to update transaction", updateTxError)
+          logger.error("PayFast Wallet IPN: Failed to update transaction", updateTxError)
           return NextResponse.json({ error: "Failed to update transaction" }, { status: 500 })
         }
 
-        console.log(`PayFast Wallet IPN: Deposit of R${amount} completed for user ${userId}`)
+        logger.info(`PayFast Wallet IPN: Deposit of R${amount} completed for user ${userId}`)
         break
 
       case "FAILED":
@@ -156,12 +157,12 @@ export async function POST(req: NextRequest) {
             })
             .eq("id", transactionId)
         }
-        console.log("PayFast Wallet IPN: Payment failed")
+        logger.info("PayFast Wallet IPN: Payment failed")
         break
 
       case "PENDING":
         // Transaction still pending, no action needed
-        console.log("PayFast Wallet IPN: Payment pending")
+        logger.debug("PayFast Wallet IPN: Payment pending")
         break
 
       case "CANCELLED":
@@ -174,17 +175,17 @@ export async function POST(req: NextRequest) {
             })
             .eq("id", transactionId)
         }
-        console.log("PayFast Wallet IPN: Payment cancelled")
+        logger.info("PayFast Wallet IPN: Payment cancelled")
         break
 
       default:
-        console.log(`PayFast Wallet IPN: Unknown status ${paymentStatus}`)
+        logger.warn(`PayFast Wallet IPN: Unknown status ${paymentStatus}`)
     }
 
     // PayFast requires a 200 OK response
     return new NextResponse("OK", { status: 200 })
   } catch (error) {
-    console.error("PayFast Wallet IPN error:", error)
+    logger.error("PayFast Wallet IPN error:", error)
     return NextResponse.json({ error: "IPN processing failed" }, { status: 500 })
   }
 }

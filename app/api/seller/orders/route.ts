@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
 import { sanitizeSearchInput } from "@/lib/utils"
+import { logger } from "@/lib/logger"
 
 export async function GET(request: NextRequest) {
   try {
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
     const { data: orders, error: ordersError, count } = await query
 
     if (ordersError) {
-      console.error("Error fetching seller orders:", ordersError)
+      logger.error("Error fetching seller orders:", ordersError)
       return NextResponse.json(
         { error: "Failed to fetch orders" },
         { status: 500 }
@@ -135,7 +136,7 @@ export async function GET(request: NextRequest) {
       offset
     })
   } catch (error) {
-    console.error("Error in GET /api/seller/orders:", error)
+    logger.error("Error in GET /api/seller/orders:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

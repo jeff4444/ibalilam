@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching admin stats:', error)
+    logger.error('Error fetching admin stats:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

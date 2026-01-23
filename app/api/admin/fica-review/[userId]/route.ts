@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function GET(
   request: NextRequest,
@@ -34,7 +35,7 @@ export async function GET(
       .single()
 
     if (profileError) {
-      console.error('Error fetching user profile:', profileError)
+      logger.error('Error fetching user profile:', profileError)
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
@@ -49,7 +50,7 @@ export async function GET(
       .maybeSingle()
 
     if (shopError) {
-      console.error('Error fetching shop data:', shopError)
+      logger.error('Error fetching shop data:', shopError)
     }
 
     // Fetch FICA documents using admin client
@@ -60,7 +61,7 @@ export async function GET(
       .order('uploaded_at', { ascending: false })
 
     if (docsError) {
-      console.error('Error fetching FICA documents:', docsError)
+      logger.error('Error fetching FICA documents:', docsError)
     }
 
     // Combine all data
@@ -93,7 +94,7 @@ export async function GET(
 
     return NextResponse.json({ data: ficaDetails })
   } catch (error) {
-    console.error('Error in FICA detail API:', error)
+    logger.error('Error in FICA detail API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

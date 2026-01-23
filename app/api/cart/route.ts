@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
 import { withRateLimit } from '@/lib/rate-limit-middleware'
+import { logger } from '@/lib/logger'
 
 // GET - Fetch user's cart items
 export async function GET(request: NextRequest) {
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching cart items:', error)
+      logger.error('Error fetching cart items:', error)
       return NextResponse.json({ error: 'Failed to fetch cart items' }, { status: 500 })
     }
 
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ items: transformedItems })
   } catch (error) {
-    console.error('Error in GET /api/cart:', error)
+    logger.error('Error in GET /api/cart:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
         .eq('id', existingItem.id)
 
       if (updateError) {
-        console.error('Error updating cart item:', updateError)
+        logger.error('Error updating cart item:', updateError)
         return NextResponse.json({ error: 'Failed to update cart item' }, { status: 500 })
       }
 
@@ -160,14 +161,14 @@ export async function POST(request: NextRequest) {
         })
 
       if (insertError) {
-        console.error('Error inserting cart item:', insertError)
+        logger.error('Error inserting cart item:', insertError)
         return NextResponse.json({ error: 'Failed to add cart item' }, { status: 500 })
       }
 
       return NextResponse.json({ success: true, message: 'Cart item added' })
     }
   } catch (error) {
-    console.error('Error in POST /api/cart:', error)
+    logger.error('Error in POST /api/cart:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -206,7 +207,7 @@ export async function PUT(request: NextRequest) {
         .eq('part_id', partId)
 
       if (deleteError) {
-        console.error('Error deleting cart item:', deleteError)
+        logger.error('Error deleting cart item:', deleteError)
         return NextResponse.json({ error: 'Failed to remove cart item' }, { status: 500 })
       }
 
@@ -226,13 +227,13 @@ export async function PUT(request: NextRequest) {
       .eq('part_id', partId)
 
     if (updateError) {
-      console.error('Error updating cart item:', updateError)
+      logger.error('Error updating cart item:', updateError)
       return NextResponse.json({ error: 'Failed to update cart item' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, message: 'Cart item updated' })
   } catch (error) {
-    console.error('Error in PUT /api/cart:', error)
+    logger.error('Error in PUT /api/cart:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -269,13 +270,13 @@ export async function DELETE(request: NextRequest) {
       .eq('part_id', partId)
 
     if (deleteError) {
-      console.error('Error deleting cart item:', deleteError)
+      logger.error('Error deleting cart item:', deleteError)
       return NextResponse.json({ error: 'Failed to remove cart item' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, message: 'Cart item removed' })
   } catch (error) {
-    console.error('Error in DELETE /api/cart:', error)
+    logger.error('Error in DELETE /api/cart:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

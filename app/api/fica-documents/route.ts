@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import { verifyAdmin } from '@/lib/auth-utils'
 import { withRateLimit } from '@/lib/rate-limit-middleware'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,13 +39,13 @@ export async function GET(request: NextRequest) {
       .order('uploaded_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching FICA documents:', error)
+      logger.error('Error fetching FICA documents:', error)
       return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 })
     }
 
     return NextResponse.json({ data })
   } catch (error) {
-    console.error('Error in FICA documents API:', error)
+    logger.error('Error in FICA documents API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -87,13 +88,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error inserting FICA document:', error)
+      logger.error('Error inserting FICA document:', error)
       return NextResponse.json({ error: 'Failed to save document' }, { status: 500 })
     }
 
     return NextResponse.json({ data })
   } catch (error) {
-    console.error('Error in FICA documents POST API:', error)
+    logger.error('Error in FICA documents POST API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -148,7 +149,7 @@ export async function DELETE(request: NextRequest) {
       .single()
 
     if (userProfileError) {
-      console.error('Error checking FICA status:', userProfileError)
+      logger.error('Error checking FICA status:', userProfileError)
       return NextResponse.json({ error: 'Failed to verify FICA status' }, { status: 500 })
     }
 
@@ -165,13 +166,13 @@ export async function DELETE(request: NextRequest) {
       .eq('id', documentId)
 
     if (deleteError) {
-      console.error('Error deleting FICA document:', deleteError)
+      logger.error('Error deleting FICA document:', deleteError)
       return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in FICA documents DELETE API:', error)
+    logger.error('Error in FICA documents DELETE API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -204,7 +205,7 @@ export async function PUT(request: NextRequest) {
       .eq('user_id', user.id)
 
     if (docsError) {
-      console.error('Error fetching documents:', docsError)
+      logger.error('Error fetching documents:', docsError)
       return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 })
     }
 
@@ -226,7 +227,7 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (profileError) {
-      console.error('Error fetching profile:', profileError)
+      logger.error('Error fetching profile:', profileError)
       return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 })
     }
 
@@ -249,7 +250,7 @@ export async function PUT(request: NextRequest) {
       .eq('user_id', user.id)
 
     if (updateError) {
-      console.error('Error updating FICA status:', updateError)
+      logger.error('Error updating FICA status:', updateError)
       return NextResponse.json({ error: 'Failed to submit for review' }, { status: 500 })
     }
 
@@ -264,13 +265,13 @@ export async function PUT(request: NextRequest) {
       })
 
     if (logError) {
-      console.error('Error logging FICA submission:', logError)
+      logger.error('Error logging FICA submission:', logError)
       // Don't fail the request if logging fails
     }
 
     return NextResponse.json({ success: true, message: 'Documents submitted for review' })
   } catch (error) {
-    console.error('Error in FICA documents PUT API:', error)
+    logger.error('Error in FICA documents PUT API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

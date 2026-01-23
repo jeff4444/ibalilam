@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/utils/supabase/admin'
 import { auditLog } from '@/lib/audit-logger'
 import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
     const { data: withdrawals, error, count } = await query
 
     if (error) {
-      console.error('Error fetching withdrawals:', error)
+      logger.error('Error fetching withdrawals:', error)
       throw error
     }
 
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching withdrawals:', error)
+    logger.error('Error fetching withdrawals:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest) {
       )
 
       if (approvalError) {
-        console.error('Error in atomic_withdrawal_approve:', approvalError)
+        logger.error('Error in atomic_withdrawal_approve:', approvalError)
         return NextResponse.json({ error: 'Failed to approve withdrawal' }, { status: 500 })
       }
 
@@ -275,7 +276,7 @@ export async function POST(request: NextRequest) {
       )
 
       if (rejectionError) {
-        console.error('Error in atomic_withdrawal_reject:', rejectionError)
+        logger.error('Error in atomic_withdrawal_reject:', rejectionError)
         return NextResponse.json({ error: 'Failed to reject withdrawal' }, { status: 500 })
       }
 
@@ -306,7 +307,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error('Error processing withdrawal action:', error)
+    logger.error('Error processing withdrawal action:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { logger } from "@/lib/logger"
 
 /**
  * PayFast IP Validation Security Module
@@ -106,7 +107,7 @@ function isIPInList(ip: string, ipList: string[]): boolean {
 export function isValidPayFastIP(ip: string | null | undefined): boolean {
   // Allow bypass for local development/testing only
   if (process.env.PAYFAST_SKIP_IP_CHECK === "true") {
-    console.warn("PayFast IP check bypassed - PAYFAST_SKIP_IP_CHECK is enabled")
+    logger.warn("PayFast IP check bypassed - PAYFAST_SKIP_IP_CHECK is enabled")
     return true
   }
 
@@ -203,7 +204,7 @@ export async function validatePayFastIPNWithServer(
 ): Promise<{ isValid: boolean; error?: string }> {
   // Allow bypass for local development/testing only
   if (process.env.PAYFAST_SKIP_SERVER_VALIDATION === "true") {
-    console.warn("PayFast server validation bypassed - PAYFAST_SKIP_SERVER_VALIDATION is enabled")
+    logger.warn("PayFast server validation bypassed - PAYFAST_SKIP_SERVER_VALIDATION is enabled")
     return { isValid: true }
   }
 
@@ -246,7 +247,7 @@ export async function validatePayFastIPNWithServer(
           }
         } else {
           // Unexpected response
-          console.error(`PayFast validation unexpected response: ${responseText}`)
+          logger.error(`PayFast validation unexpected response: ${responseText}`)
           return { 
             isValid: false, 
             error: `PayFast server validation returned unexpected response: ${responseText}` 
@@ -254,7 +255,7 @@ export async function validatePayFastIPNWithServer(
         }
       } catch (fetchError) {
         lastError = fetchError as Error
-        console.error(`PayFast validation attempt ${attempt} failed:`, fetchError)
+        logger.error(`PayFast validation attempt ${attempt} failed:`, fetchError)
         
         // Wait before retry (exponential backoff)
         if (attempt < maxRetries) {
@@ -264,13 +265,13 @@ export async function validatePayFastIPNWithServer(
     }
 
     // All retries failed
-    console.error("PayFast server validation failed after all retries:", lastError)
+    logger.error("PayFast server validation failed after all retries:", lastError)
     return { 
       isValid: false, 
       error: `PayFast server validation failed after ${maxRetries} attempts: ${lastError?.message}` 
     }
   } catch (error) {
-    console.error("PayFast server validation error:", error)
+    logger.error("PayFast server validation error:", error)
     return { 
       isValid: false, 
       error: `PayFast server validation error: ${(error as Error).message}` 

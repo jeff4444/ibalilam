@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 async function enrichMessagesWithProfiles(
   supabase: any,
@@ -28,7 +29,7 @@ async function enrichMessagesWithProfiles(
     .in('user_id', senderIds)
 
   if (profilesError) {
-    console.error('Error fetching sender profiles:', profilesError)
+    logger.error('Error fetching sender profiles:', profilesError)
     return messages.map(message => ({ ...message, user_profiles: null }))
   }
 
@@ -113,7 +114,7 @@ export async function GET(
       .order('created_at', { ascending: true })
 
     if (messagesError) {
-      console.error('Error fetching messages:', messagesError)
+      logger.error('Error fetching messages:', messagesError)
       return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
     }
 
@@ -129,7 +130,7 @@ export async function GET(
       .single()
 
     if (userError) {
-      console.error('Error fetching other user:', userError)
+      logger.error('Error fetching other user:', userError)
     }
 
     // Mark messages as read
@@ -155,7 +156,7 @@ export async function GET(
       otherUser: otherUser || null
     })
   } catch (error) {
-    console.error('Error in GET /api/messages/[chatId]:', error)
+    logger.error('Error in GET /api/messages/[chatId]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -209,7 +210,7 @@ export async function POST(
       .single()
 
     if (messageError) {
-      console.error('Error creating message:', messageError)
+      logger.error('Error creating message:', messageError)
       return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
     }
 
@@ -232,7 +233,7 @@ export async function POST(
           messageId: newMessage.id,
           type: 'new_message'
         })
-      }).catch(err => console.error('Email notification error:', err))
+      }).catch(err => logger.error('Email notification error:', err))
 
       // Send push notification
       fetch(`${appUrl}/api/notifications/push`, {
@@ -243,14 +244,14 @@ export async function POST(
           messageId: newMessage.id,
           type: 'new_message'
         })
-      }).catch(err => console.error('Push notification error:', err))
+      }).catch(err => logger.error('Push notification error:', err))
     } catch (error) {
-      console.error('Notification trigger error:', error)
+      logger.error('Notification trigger error:', error)
     }
 
     return NextResponse.json({ message: messageWithProfile || newMessage })
   } catch (error) {
-    console.error('Error in POST /api/messages/[chatId]:', error)
+    logger.error('Error in POST /api/messages/[chatId]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
 import crypto from "crypto"
+import { logger } from "@/lib/logger"
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (orderError || !order) {
-      console.error("Error fetching order:", orderError)
+      logger.error("Error fetching order:", orderError)
       return NextResponse.json(
         { error: "Order not found" },
         { status: 404 }
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL
 
     if (!merchantId || !merchantKey || !passphrase || !payfastUrl || !baseUrl) {
-      console.error('PayFast configuration missing:', {
+      logger.error('PayFast configuration missing:', {
         merchantId: !!merchantId,
         merchantKey: !!merchantKey,
         passphrase: !!passphrase,
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
       verifiedAmount: verifiedAmount,
     })
   } catch (error) {
-    console.error("PayFast payment generation error:", error)
+    logger.error("PayFast payment generation error:", error)
     return NextResponse.json(
       { error: "Failed to generate payment data" },
       { status: 500 }

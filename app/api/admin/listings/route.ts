@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/utils/supabase/admin'
 import { sanitizeSearchInput } from '@/lib/utils'
 import { verifyAdmin } from '@/lib/auth-utils'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching listings:', error)
+    logger.error('Error fetching listings:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -171,7 +172,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error updating listing:', error)
+    logger.error('Error updating listing:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

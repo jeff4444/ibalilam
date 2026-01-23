@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function POST(
   request: NextRequest,
@@ -47,7 +48,7 @@ export async function POST(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in POST /api/messages/[chatId]/safety-tips:', error)
+    logger.error('Error in POST /api/messages/[chatId]/safety-tips:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

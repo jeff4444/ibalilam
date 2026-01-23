@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (ordersError) {
-      console.error("Error fetching orders:", ordersError)
+      logger.error("Error fetching orders:", ordersError)
       return NextResponse.json(
         { error: "Failed to fetch orders" },
         { status: 500 }
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ orders: orders || [] })
   } catch (error) {
-    console.error("Error in GET /api/orders:", error)
+    logger.error("Error in GET /api/orders:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

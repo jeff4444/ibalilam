@@ -4,6 +4,58 @@ import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import { auditLog } from '@/lib/audit-logger'
 import { withRateLimit } from '@/lib/rate-limit-middleware'
+import { logger } from '@/lib/logger'
+
+// LOW-002 FIX: Bank details validation interface and function
+interface BankDetails {
+  accountNumber: string
+  accountHolder: string
+  bankName: string
+  branchCode?: string
+}
+
+/**
+ * Validates South African bank details
+ * Returns sanitized bank details or null if invalid
+ */
+function validateBankDetails(details: unknown): BankDetails | null {
+  if (!details || typeof details !== 'object') return null
+  
+  const { accountNumber, accountHolder, bankName, branchCode } = details as Record<string, unknown>
+  
+  // Required fields must be strings
+  if (!accountNumber || typeof accountNumber !== 'string') return null
+  if (!accountHolder || typeof accountHolder !== 'string') return null
+  if (!bankName || typeof bankName !== 'string') return null
+  
+  // SA bank accounts: typically 10-12 digits (some banks allow 9-13)
+  const cleanedAccountNumber = accountNumber.replace(/\s/g, '')
+  if (!/^\d{9,13}$/.test(cleanedAccountNumber)) return null
+  
+  // Account holder: 2-100 chars, letters/spaces/hyphens/apostrophes only
+  const cleanedHolder = accountHolder.trim()
+  if (cleanedHolder.length < 2 || cleanedHolder.length > 100) return null
+  if (!/^[a-zA-Z\s\-']+$/.test(cleanedHolder)) return null
+  
+  // Bank name: must be non-empty (2+ chars)
+  const cleanedBankName = bankName.trim()
+  if (cleanedBankName.length < 2) return null
+  
+  // Branch code: optional, but if provided must be 6 digits (universal branch codes in SA)
+  let cleanedBranchCode: string | undefined
+  if (branchCode) {
+    if (typeof branchCode !== 'string') return null
+    cleanedBranchCode = branchCode.replace(/\s/g, '')
+    if (!/^\d{6}$/.test(cleanedBranchCode)) return null
+  }
+  
+  return {
+    accountNumber: cleanedAccountNumber,
+    accountHolder: cleanedHolder,
+    bankName: cleanedBankName,
+    branchCode: cleanedBranchCode
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +74,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { amount, bankDetails } = body
+
+    // LOW-002 FIX: Validate bank details if provided
+    let validatedBankDetails: BankDetails | null = null
+    if (bankDetails) {
+      validatedBankDetails = validateBankDetails(bankDetails)
+      if (!validatedBankDetails) {
+        return NextResponse.json({ 
+          error: 'Invalid bank details. Please check account number (9-13 digits), account holder name (letters only), bank name, and branch code (6 digits if provided).' 
+        }, { status: 400 })
+      }
+    }
 
     // Validate amount
     if (!amount || isNaN(amount) || amount <= 0) {
@@ -100,14 +163,14 @@ export async function POST(request: NextRequest) {
         p_wallet_id: wallet.id,
         p_amount: amount,
         p_user_id: user.id,
-        p_bank_details: bankDetails || null,
+        p_bank_details: validatedBankDetails,
         p_user_name: profile?.full_name || null,
         p_user_email: profile?.email || user.email
       }
     )
 
     if (withdrawalError) {
-      console.error('Error in atomic_withdrawal_request:', withdrawalError)
+      logger.error('Error in atomic_withdrawal_request:', withdrawalError)
       return NextResponse.json({ error: 'Failed to process withdrawal' }, { status: 500 })
     }
 
@@ -145,7 +208,7 @@ export async function POST(request: NextRequest) {
       pendingWithdrawalBalance: parseFloat(withdrawalResult.pending_withdrawal_balance) || 0
     })
   } catch (error) {
-    console.error('Error processing withdrawal:', error)
+    logger.error('Error processing withdrawal:', error)
     return NextResponse.json({ error: 'Failed to process withdrawal' }, { status: 500 })
   }
 }
@@ -201,7 +264,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching withdrawal status:', error)
+    logger.error('Error fetching withdrawal status:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

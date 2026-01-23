@@ -16,6 +16,7 @@ import "server-only"
 
 import { supabaseAdmin } from "@/utils/supabase/admin"
 import { NextRequest } from "next/server"
+import { logger } from "@/lib/logger"
 
 // ============================================================
 // Types
@@ -163,7 +164,7 @@ class RateLimiter {
       }
     } catch (err) {
       // Fallback to default config on error
-      console.error('[RATE_LIMITER] Error fetching config:', err)
+      logger.error('[RATE_LIMITER] Error fetching config:', err)
     }
 
     // Return default config
@@ -191,7 +192,7 @@ class RateLimiter {
       })
 
       if (error) {
-        console.error('[RATE_LIMITER] Error checking rate limit:', error)
+        logger.error('[RATE_LIMITER] Error checking rate limit:', error)
         // On error, allow the request (fail open) but log it
         return {
           allowed: true,
@@ -209,7 +210,7 @@ class RateLimiter {
         currentCount: result.current_count,
       }
     } catch (err) {
-      console.error('[RATE_LIMITER] Exception checking rate limit:', err)
+      logger.error('[RATE_LIMITER] Exception checking rate limit:', err)
       // Fail open on exception
       return {
         allowed: true,
@@ -237,7 +238,7 @@ class RateLimiter {
       })
 
       if (error) {
-        console.error('[RATE_LIMITER] Error peeking rate limit:', error)
+        logger.error('[RATE_LIMITER] Error peeking rate limit:', error)
         return {
           allowed: true,
           remaining: config.maxRequests,
@@ -254,7 +255,7 @@ class RateLimiter {
         currentCount: result.current_count,
       }
     } catch (err) {
-      console.error('[RATE_LIMITER] Exception peeking rate limit:', err)
+      logger.error('[RATE_LIMITER] Exception peeking rate limit:', err)
       return {
         allowed: true,
         remaining: config.maxRequests,
@@ -275,13 +276,13 @@ class RateLimiter {
       })
 
       if (error) {
-        console.error('[RATE_LIMITER] Error resetting rate limit:', error)
+        logger.error('[RATE_LIMITER] Error resetting rate limit:', error)
         return false
       }
 
       return true
     } catch (err) {
-      console.error('[RATE_LIMITER] Exception resetting rate limit:', err)
+      logger.error('[RATE_LIMITER] Exception resetting rate limit:', err)
       return false
     }
   }

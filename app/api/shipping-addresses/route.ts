@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 // GET: Fetch all saved addresses for authenticated user
 export async function GET(request: NextRequest) {
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching shipping addresses:", error)
+      logger.error("Error fetching shipping addresses:", error)
       return NextResponse.json(
         { error: "Failed to fetch shipping addresses" },
         { status: 500 }
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ addresses: addresses || [] })
   } catch (error) {
-    console.error("Error in GET shipping addresses:", error)
+    logger.error("Error in GET shipping addresses:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error("Error creating shipping address:", error)
+      logger.error("Error creating shipping address:", error)
       return NextResponse.json(
         { error: "Failed to create shipping address" },
         { status: 500 }
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ address: newAddress })
   } catch (error) {
-    console.error("Error in POST shipping address:", error)
+    logger.error("Error in POST shipping address:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -184,7 +185,7 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error("Error updating shipping address:", error)
+      logger.error("Error updating shipping address:", error)
       return NextResponse.json(
         { error: "Failed to update shipping address" },
         { status: 500 }
@@ -193,7 +194,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ address: updatedAddress })
   } catch (error) {
-    console.error("Error in PUT shipping address:", error)
+    logger.error("Error in PUT shipping address:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -246,7 +247,7 @@ export async function DELETE(request: NextRequest) {
       .eq("user_id", user.id)
 
     if (error) {
-      console.error("Error deleting shipping address:", error)
+      logger.error("Error deleting shipping address:", error)
       return NextResponse.json(
         { error: "Failed to delete shipping address" },
         { status: 500 }
@@ -255,7 +256,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error in DELETE shipping address:", error)
+    logger.error("Error in DELETE shipping address:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

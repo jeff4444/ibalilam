@@ -7,6 +7,7 @@ import {
   ALLOWED_IMAGE_MIME_TYPES 
 } from '@/lib/file-security'
 import { withRateLimit } from '@/lib/rate-limit-middleware'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
       })
 
     if (error) {
-      console.error('Error uploading file:', error)
+      logger.error('Error uploading file:', error)
       return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 })
     }
 
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
       fileName: data.path
     })
   } catch (error) {
-    console.error('Error in POST /api/messages/upload:', error)
+    logger.error('Error in POST /api/messages/upload:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

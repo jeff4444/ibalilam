@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,12 +37,12 @@ export async function GET(request: NextRequest) {
         .single()
       
       if (createError) {
-        console.error('Error creating wallet:', createError)
+        logger.error('Error creating wallet:', createError)
         return NextResponse.json({ error: 'Failed to create wallet' }, { status: 500 })
       }
       userWallet = newWallet
     } else if (walletError) {
-      console.error('Error fetching wallet:', walletError)
+      logger.error('Error fetching wallet:', walletError)
       return NextResponse.json({ error: 'Failed to fetch wallet' }, { status: 500 })
     }
 
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
     const { data: transactions, error: txError, count } = await transactionsQuery
 
     if (txError) {
-      console.error('Error fetching transactions:', txError)
+      logger.error('Error fetching transactions:', txError)
       return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 })
     }
 
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error in wallet GET:', error)
+    logger.error('Error in wallet GET:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

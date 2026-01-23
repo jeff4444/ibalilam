@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
 import { withRateLimit } from '@/lib/rate-limit-middleware'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
         .single()
       
       if (createError) {
-        console.error('Error creating wallet:', createError)
+        logger.error('Error creating wallet:', createError)
         return NextResponse.json({ error: 'Failed to create wallet' }, { status: 500 })
       }
       wallet = newWallet
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (txError) {
-      console.error('Error creating pending transaction:', txError)
+      logger.error('Error creating pending transaction:', txError)
       return NextResponse.json({ error: 'Failed to initiate deposit' }, { status: 500 })
     }
 
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL
 
     if (!merchantId || !merchantKey || !passphrase || !payfastUrl || !baseUrl) {
-      console.error('PayFast configuration missing:', {
+      logger.error('PayFast configuration missing:', {
         merchantId: !!merchantId,
         merchantKey: !!merchantKey,
         passphrase: !!passphrase,
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
       transactionId: pendingTx.id
     })
   } catch (error) {
-    console.error('Error initiating deposit:', error)
+    logger.error('Error initiating deposit:', error)
     return NextResponse.json({ error: 'Failed to initiate deposit' }, { status: 500 })
   }
 }

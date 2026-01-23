@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (profileError) {
-        console.error('Error fetching sender profile:', profileError)
+        logger.error('Error fetching sender profile:', profileError)
       } else {
         senderProfile = profile
       }
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     // Here you would integrate with your push notification service
     // For now, we'll just log the notification data
-    console.log('Push notification data:', pushNotificationData)
+    logger.debug('Push notification data:', pushNotificationData)
 
     // In a real implementation, you would send the push notification here
     // Example with Web Push API or a service like OneSignal:
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: 'Push notification sent' })
   } catch (error) {
-    console.error('Error in POST /api/notifications/push:', error)
+    logger.error('Error in POST /api/notifications/push:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

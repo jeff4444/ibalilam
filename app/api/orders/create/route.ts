@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
 import { auditLog } from "@/lib/audit-logger"
 import { withRateLimit } from "@/lib/rate-limit-middleware"
+import { logger } from "@/lib/logger"
 
 // Server-side shipping cost calculation
 function calculateShippingCost(subtotal: number, shippingMethod: string): number {
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
       .in("id", partIds)
 
     if (partsError || !parts) {
-      console.error("Error fetching parts:", partsError)
+      logger.error("Error fetching parts:", partsError)
       return NextResponse.json(
         { error: "Failed to fetch part information" },
         { status: 500 }
@@ -171,7 +172,7 @@ export async function POST(req: NextRequest) {
 
       if (tierError || !tierPriceData || tierPriceData.length === 0) {
         // Fallback to base price from parts table if tier pricing fails
-        console.warn(`Tier pricing failed for part ${partId}, using base price:`, tierError)
+        logger.warn(`Tier pricing failed for part ${partId}, using base price:`, tierError)
         unitPrice = parseFloat(part.price.toString())
         tierName = "Base Price"
       } else {
@@ -262,7 +263,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (orderError || !order) {
-      console.error("Error creating order:", orderError)
+      logger.error("Error creating order:", orderError)
       return NextResponse.json(
         { error: "Failed to create order" },
         { status: 500 }
@@ -283,7 +284,7 @@ export async function POST(req: NextRequest) {
       .insert(orderItems)
 
     if (orderItemsError) {
-      console.error("Error creating order items:", orderItemsError)
+      logger.error("Error creating order items:", orderItemsError)
       // Try to delete the order if order items creation fails
       await supabase.from("orders").delete().eq("id", order.id)
       return NextResponse.json(
@@ -317,7 +318,7 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (error) {
-    console.error("Error in order creation:", error)
+    logger.error("Error in order creation:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

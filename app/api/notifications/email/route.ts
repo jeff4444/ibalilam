@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { supabaseAdmin } from '@/utils/supabase/admin'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (profileError) {
-        console.error('Error fetching sender profile:', profileError)
+        logger.error('Error fetching sender profile:', profileError)
       } else {
         senderProfile = profile
       }
@@ -145,8 +146,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Here you would integrate with your email service (SendGrid, Resend, etc.)
-    // For now, we'll just log the email data
-    console.log('Email notification data:', emailData)
+    // For now, we'll just log the email data (debug only in development)
+    logger.debug('Email notification data:', emailData)
 
     // In a real implementation, you would send the email here
     // Example with Resend:
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: 'Email notification sent' })
   } catch (error) {
-    console.error('Error in POST /api/notifications/email:', error)
+    logger.error('Error in POST /api/notifications/email:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

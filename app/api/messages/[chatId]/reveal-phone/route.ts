@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 export async function POST(
   request: NextRequest,
@@ -58,7 +59,7 @@ export async function POST(
       .eq('id', chatId)
 
     if (updateError) {
-      console.error('Error updating chat:', updateError)
+      logger.error('Error updating chat:', updateError)
       return NextResponse.json({ error: 'Failed to reveal phone number' }, { status: 500 })
     }
 
@@ -77,7 +78,7 @@ export async function POST(
       phoneRevealed: (isBuyer && chat.phone_revealed_by_seller) || (isSeller && chat.phone_revealed_by_buyer)
     })
   } catch (error) {
-    console.error('Error in POST /api/messages/[chatId]/reveal-phone:', error)
+    logger.error('Error in POST /api/messages/[chatId]/reveal-phone:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

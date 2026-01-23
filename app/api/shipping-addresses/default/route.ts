@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 // POST: Set default address
 export async function POST(request: NextRequest) {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error("Error setting default shipping address:", error)
+      logger.error("Error setting default shipping address:", error)
       return NextResponse.json(
         { error: "Failed to set default shipping address" },
         { status: 500 }
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ address: updatedAddress })
   } catch (error) {
-    console.error("Error in POST default shipping address:", error)
+    logger.error("Error in POST default shipping address:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -20,6 +20,16 @@ import { FicaUpload } from "@/components/fica-upload"
 import { FicaBadge } from "@/components/fica-badge"
 import { useFica } from "@/hooks/use-fica"
 import { MainNavbar } from "@/components/navbar"
+import {
+  validateFicaPersonalInfo,
+  validateFicaBusinessInfo,
+  validateName,
+  validatePhoneNumber,
+  validateEmail,
+  validateAddress,
+  validateBusinessName,
+  validateRegistrationNumber,
+} from "@/lib/fica-validation"
 
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
@@ -29,6 +39,7 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState("")
   const [ficaError, setFicaError] = useState("")
   const [ficaSuccess, setFicaSuccess] = useState("")
+  const [ficaFieldErrors, setFicaFieldErrors] = useState<Record<string, string>>({})
   const [userProfile, setUserProfile] = useState({
     firstName: "",
     lastName: "",
@@ -435,37 +446,96 @@ export default function ProfilePage() {
     }
   }
 
+  // Validation handlers for real-time validation
+  const validatePersonalField = (field: string, value: string) => {
+    let result
+    switch (field) {
+      case 'firstName':
+        result = validateName(value, 'First Name')
+        break
+      case 'lastName':
+        result = validateName(value, 'Last Name')
+        break
+      case 'phone':
+        result = validatePhoneNumber(value, 'Contact Number')
+        break
+      case 'address':
+        result = validateAddress(value, 'Address')
+        break
+      default:
+        return
+    }
+    setFicaFieldErrors(prev => ({
+      ...prev,
+      [field]: result.isValid ? '' : (result.error || '')
+    }))
+  }
+
+  const validateBusinessField = (field: string, value: string) => {
+    let result
+    switch (field) {
+      case 'name':
+        result = validateBusinessName(value, 'Business Name')
+        break
+      case 'registration_number':
+        result = validateRegistrationNumber(value, 'Registration Number')
+        break
+      case 'owner_name':
+        result = validateName(value, 'Owner Name')
+        break
+      case 'owner_phone':
+        result = validatePhoneNumber(value, 'Owner Phone')
+        break
+      case 'owner_email':
+        result = validateEmail(value, 'Owner Email')
+        break
+      default:
+        return
+    }
+    setFicaFieldErrors(prev => ({
+      ...prev,
+      [field]: result.isValid ? '' : (result.error || '')
+    }))
+  }
+
   const handleSaveFicaForm = async () => {
     setIsFicaLoading(true)
     setFicaError("")
     setFicaSuccess("")
+    setFicaFieldErrors({})
 
-    // Validate all required personal fields
-    const missingPersonalFields: string[] = []
-    if (!userProfile.firstName.trim()) missingPersonalFields.push("First Name")
-    if (!userProfile.lastName.trim()) missingPersonalFields.push("Last Name")
-    if (!userProfile.address.trim()) missingPersonalFields.push("Address")
-    if (!userProfile.phone.trim()) missingPersonalFields.push("Contact Number")
+    // Validate all personal fields
+    const personalValidation = validateFicaPersonalInfo({
+      firstName: userProfile.firstName,
+      lastName: userProfile.lastName,
+      phone: userProfile.phone,
+      address: userProfile.address,
+    })
 
-    // Validate all required business fields
-    const missingBusinessFields: string[] = []
-    if (!shopProfile.name.trim()) missingBusinessFields.push("Business Name")
-    if (!shopProfile.registration_number.trim()) missingBusinessFields.push("Registration Number")
-    if (!shopProfile.owner_name.trim()) missingBusinessFields.push("Owner Name")
-    if (!shopProfile.owner_phone.trim()) missingBusinessFields.push("Owner Phone")
-    if (!shopProfile.owner_email.trim()) missingBusinessFields.push("Owner Email")
+    // Validate all business fields
+    const businessValidation = validateFicaBusinessInfo({
+      name: shopProfile.name,
+      registration_number: shopProfile.registration_number,
+      owner_name: shopProfile.owner_name,
+      owner_phone: shopProfile.owner_phone,
+      owner_email: shopProfile.owner_email,
+    })
+
+    // Set field errors
+    setFicaFieldErrors({
+      ...personalValidation.errors,
+      ...businessValidation.errors,
+    })
 
     // Check for missing FICA documents
     const requiredDocTypes = ['id_document', 'proof_of_address', 'id_selfie']
     const uploadedDocTypes = ficaDocuments.map(doc => doc.document_type)
     const missingDocuments = requiredDocTypes.filter(type => !uploadedDocTypes.includes(type as any))
 
-    const allMissingFields = [...missingPersonalFields, ...missingBusinessFields]
-    
-    if (allMissingFields.length > 0 || missingDocuments.length > 0) {
+    if (!personalValidation.isValid || !businessValidation.isValid || missingDocuments.length > 0) {
       let errorMessage = ""
-      if (allMissingFields.length > 0) {
-        errorMessage += `Please fill in the following required fields: ${allMissingFields.join(", ")}.`
+      if (!personalValidation.isValid || !businessValidation.isValid) {
+        errorMessage = "Please correct the errors in the form fields above."
       }
       if (missingDocuments.length > 0) {
         const docNames = missingDocuments.map(type => {
@@ -1077,22 +1147,38 @@ export default function ProfilePage() {
                           <Input
                             id="ficaFirstName"
                             value={userProfile.firstName}
-                            onChange={(e) => setUserProfile({ ...userProfile, firstName: e.target.value })}
+                            onChange={(e) => {
+                              setUserProfile({ ...userProfile, firstName: e.target.value })
+                              validatePersonalField('firstName', e.target.value)
+                            }}
+                            onBlur={(e) => validatePersonalField('firstName', e.target.value)}
                             placeholder="Enter your first name"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.firstName ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.firstName && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.firstName}</p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="ficaLastName">Last Name <span className="text-red-500">*</span></Label>
                           <Input
                             id="ficaLastName"
                             value={userProfile.lastName}
-                            onChange={(e) => setUserProfile({ ...userProfile, lastName: e.target.value })}
+                            onChange={(e) => {
+                              setUserProfile({ ...userProfile, lastName: e.target.value })
+                              validatePersonalField('lastName', e.target.value)
+                            }}
+                            onBlur={(e) => validatePersonalField('lastName', e.target.value)}
                             placeholder="Enter your last name"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.lastName ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.lastName && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.lastName}</p>
+                          )}
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -1100,12 +1186,20 @@ export default function ProfilePage() {
                         <Textarea
                           id="ficaAddress"
                           value={userProfile.address}
-                          onChange={(e) => setUserProfile({ ...userProfile, address: e.target.value })}
+                          onChange={(e) => {
+                            setUserProfile({ ...userProfile, address: e.target.value })
+                            validatePersonalField('address', e.target.value)
+                          }}
+                          onBlur={(e) => validatePersonalField('address', e.target.value)}
                           placeholder="Enter your full address"
                           rows={2}
                           required
                           disabled={isFicaLoading}
+                          className={ficaFieldErrors.address ? "border-red-500" : ""}
                         />
+                        {ficaFieldErrors.address && (
+                          <p className="text-sm text-red-500">{ficaFieldErrors.address}</p>
+                        )}
                       </div>
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
@@ -1126,11 +1220,19 @@ export default function ProfilePage() {
                             id="ficaPhone"
                             type="tel"
                             value={userProfile.phone}
-                            onChange={(e) => setUserProfile({ ...userProfile, phone: e.target.value })}
-                            placeholder="Enter your phone number"
+                            onChange={(e) => {
+                              setUserProfile({ ...userProfile, phone: e.target.value })
+                              validatePersonalField('phone', e.target.value)
+                            }}
+                            onBlur={(e) => validatePersonalField('phone', e.target.value)}
+                            placeholder="Enter your phone number (e.g., +27XXXXXXXXX or 0XXXXXXXXX)"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.phone ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.phone && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.phone}</p>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -1151,22 +1253,38 @@ export default function ProfilePage() {
                           <Input
                             id="ficaBusinessName"
                             value={shopProfile.name}
-                            onChange={(e) => setShopProfile({ ...shopProfile, name: e.target.value })}
+                            onChange={(e) => {
+                              setShopProfile({ ...shopProfile, name: e.target.value })
+                              validateBusinessField('name', e.target.value)
+                            }}
+                            onBlur={(e) => validateBusinessField('name', e.target.value)}
                             placeholder="Enter your business name"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.name ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.name && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.name}</p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="ficaRegistrationNumber">Registration Number <span className="text-red-500">*</span></Label>
                           <Input
                             id="ficaRegistrationNumber"
                             value={shopProfile.registration_number}
-                            onChange={(e) => setShopProfile({ ...shopProfile, registration_number: e.target.value })}
+                            onChange={(e) => {
+                              setShopProfile({ ...shopProfile, registration_number: e.target.value })
+                              validateBusinessField('registration_number', e.target.value)
+                            }}
+                            onBlur={(e) => validateBusinessField('registration_number', e.target.value)}
                             placeholder="Enter your business registration number"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.registration_number ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.registration_number && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.registration_number}</p>
+                          )}
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -1174,11 +1292,19 @@ export default function ProfilePage() {
                         <Input
                           id="ficaOwnerName"
                           value={shopProfile.owner_name}
-                          onChange={(e) => setShopProfile({ ...shopProfile, owner_name: e.target.value })}
+                          onChange={(e) => {
+                            setShopProfile({ ...shopProfile, owner_name: e.target.value })
+                            validateBusinessField('owner_name', e.target.value)
+                          }}
+                          onBlur={(e) => validateBusinessField('owner_name', e.target.value)}
                           placeholder="Enter the business owner's full name"
                           required
                           disabled={isFicaLoading}
+                          className={ficaFieldErrors.owner_name ? "border-red-500" : ""}
                         />
+                        {ficaFieldErrors.owner_name && (
+                          <p className="text-sm text-red-500">{ficaFieldErrors.owner_name}</p>
+                        )}
                       </div>
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
@@ -1187,11 +1313,19 @@ export default function ProfilePage() {
                             id="ficaOwnerPhone"
                             type="tel"
                             value={shopProfile.owner_phone}
-                            onChange={(e) => setShopProfile({ ...shopProfile, owner_phone: e.target.value })}
-                            placeholder="Enter owner's phone number"
+                            onChange={(e) => {
+                              setShopProfile({ ...shopProfile, owner_phone: e.target.value })
+                              validateBusinessField('owner_phone', e.target.value)
+                            }}
+                            onBlur={(e) => validateBusinessField('owner_phone', e.target.value)}
+                            placeholder="Enter owner's phone number (e.g., +27XXXXXXXXX or 0XXXXXXXXX)"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.owner_phone ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.owner_phone && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.owner_phone}</p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="ficaOwnerEmail">Owner Email <span className="text-red-500">*</span></Label>
@@ -1199,11 +1333,19 @@ export default function ProfilePage() {
                             id="ficaOwnerEmail"
                             type="email"
                             value={shopProfile.owner_email}
-                            onChange={(e) => setShopProfile({ ...shopProfile, owner_email: e.target.value })}
+                            onChange={(e) => {
+                              setShopProfile({ ...shopProfile, owner_email: e.target.value })
+                              validateBusinessField('owner_email', e.target.value)
+                            }}
+                            onBlur={(e) => validateBusinessField('owner_email', e.target.value)}
                             placeholder="Enter owner's email address"
                             required
                             disabled={isFicaLoading}
+                            className={ficaFieldErrors.owner_email ? "border-red-500" : ""}
                           />
+                          {ficaFieldErrors.owner_email && (
+                            <p className="text-sm text-red-500">{ficaFieldErrors.owner_email}</p>
+                          )}
                         </div>
                       </div>
                     </CardContent>

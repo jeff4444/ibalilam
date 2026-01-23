@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
 import { supabaseAdmin } from "@/utils/supabase/admin"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 export async function PATCH(
   request: NextRequest,
@@ -166,7 +167,7 @@ export async function PATCH(
       .single()
 
     if (updateError) {
-      console.error("Error updating order:", updateError)
+      logger.error("Error updating order:", updateError)
       return NextResponse.json(
         { error: "Failed to update order" },
         { status: 500 }
@@ -186,7 +187,7 @@ export async function PATCH(
           .single()
 
         if (transactionError) {
-          console.error("Error fetching transaction for escrow release:", transactionError)
+          logger.error("Error fetching transaction for escrow release:", transactionError)
         } else if (transaction && transaction.escrow_status === 'held') {
           const sellerAmount = parseFloat(transaction.seller_amount?.toString() || "0")
 
@@ -207,9 +208,9 @@ export async function PATCH(
           )
 
           if (releaseError) {
-            console.error("Error in atomic_escrow_release:", releaseError)
+            logger.error("Error in atomic_escrow_release:", releaseError)
           } else {
-            console.log(`Escrow release completed, transaction: ${releaseTxId}`)
+            logger.debug(`Escrow release completed, transaction: ${releaseTxId}`)
             
             // Update transaction escrow_status to released
             // SECURITY: Use admin client to bypass RLS - sellers no longer have
@@ -248,14 +249,14 @@ export async function PATCH(
           }
         }
       } catch (escrowError) {
-        console.error("Error processing atomic escrow release:", escrowError)
+        logger.error("Error processing atomic escrow release:", escrowError)
         // Don't fail the order update, just log the error
       }
     }
 
     return NextResponse.json({ order: updatedOrder })
   } catch (error) {
-    console.error("Error in PATCH /api/seller/orders/[orderId]:", error)
+    logger.error("Error in PATCH /api/seller/orders/[orderId]:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -342,7 +343,7 @@ export async function GET(
 
     return NextResponse.json({ order })
   } catch (error) {
-    console.error("Error in GET /api/seller/orders/[orderId]:", error)
+    logger.error("Error in GET /api/seller/orders/[orderId]:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

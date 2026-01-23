@@ -6,6 +6,7 @@
  */
 
 import crypto from 'crypto'
+import { logger } from '@/lib/logger'
 
 // Whitelist of allowed image extensions
 const ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'] as const
@@ -172,7 +173,7 @@ export function validateFileUpload(
   if (normalizedMimeExt !== normalizedNameExt && 
       !(extensionFromMime === 'jpg' && extensionFromName === 'jpeg') &&
       !(extensionFromMime === 'jpeg' && extensionFromName === 'jpg')) {
-    console.warn(`File extension mismatch: MIME suggests ${extensionFromMime}, filename has ${extensionFromName}`)
+    logger.warn(`File extension mismatch: MIME suggests ${extensionFromMime}, filename has ${extensionFromName}`)
     // Use MIME type extension as it's more reliable
   }
 

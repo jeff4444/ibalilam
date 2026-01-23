@@ -29,6 +29,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 // ============================================================
 // Constants
@@ -133,7 +134,7 @@ function getCsrfSecret(): string {
       )
     }
     // Only allow fallback in development
-    console.warn('WARNING: Using default CSRF secret in development. Set CSRF_SECRET for production.')
+    logger.warn('Using default CSRF secret in development. Set CSRF_SECRET for production.')
     return 'development-csrf-secret-only'
   }
   

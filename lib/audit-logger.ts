@@ -15,6 +15,7 @@ import "server-only"
 
 import { supabaseAdmin } from "@/utils/supabase/admin"
 import { NextRequest } from "next/server"
+import { logger } from "@/lib/logger"
 
 // ============================================================
 // Types
@@ -104,14 +105,14 @@ async function logAuditEvent(event: AuditEvent): Promise<string | null> {
 
     if (error) {
       // Log to console as fallback - don't throw to avoid breaking the main flow
-      console.error('[AUDIT_LOG_ERROR]', error.message, event)
+      logger.error('[AUDIT_LOG_ERROR]', error.message, event)
       return null
     }
 
     return data as string
   } catch (err) {
     // Fallback logging - audit logging should never break the application
-    console.error('[AUDIT_LOG_ERROR]', err, event)
+    logger.error('[AUDIT_LOG_ERROR]', err, event)
     return null
   }
 }
